@@ -99,13 +99,6 @@ struct ContentView: View {
                 }
             }
         }
-        .task {
-            do {
-                try await viewModel.createThread()
-            } catch {
-                showError = true
-            }
-        }
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
         } message: {
@@ -152,11 +145,6 @@ struct ChatView: View {
                 onSend: sendMessage
             )
         }
-        .overlay {
-            if viewModel.isLoading && !viewModel.isStreaming {
-                ProgressView("Loading messages...")
-            }
-        }
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showError) {
@@ -169,13 +157,8 @@ struct ChatView: View {
         .onAppear {
             isInputFocused = true
         }
-        .animation(.spring(response: 0.3), value: viewModel.isLoading)
-        .animation(.spring(response: 0.3), value: viewModel.isStreaming)
-        .submitLabel(.send)
-        .onSubmit {
-            if !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isLoading {
-                sendMessage()
-            }
+        .onDisappear {
+            viewModel.cancelCurrentTask()
         }
     }
     
@@ -212,18 +195,14 @@ struct MessageListView: View {
                         StreamingMessageView(response: viewModel.streamingResponse, viewModel: viewModel)
                             .id("streaming")
                             .transition(.opacity)
-                    } else if viewModel.isLoading {
-                        TypingIndicatorView()
-                            .id("typing")
-                            .transition(.opacity)
                     }
                 }
-                .onChange(of: viewModel.messages) { _, _ in
+                .onChange(of: viewModel.messages) { old, new in
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollToBottom(proxy: proxy)
                     }
                 }
-                .onChange(of: viewModel.streamingResponse) { _, _ in
+                .onChange(of: viewModel.streamingResponse) { old, new in
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollToBottom(proxy: proxy)
                     }
@@ -236,8 +215,6 @@ struct MessageListView: View {
     private func scrollToBottom(proxy: ScrollViewProxy) {
         if viewModel.isStreaming {
             proxy.scrollTo("streaming", anchor: .bottom)
-        } else if viewModel.isLoading {
-            proxy.scrollTo("typing", anchor: .bottom)
         } else if let lastId = viewModel.messages.last?.id {
             proxy.scrollTo(lastId, anchor: .bottom)
         }

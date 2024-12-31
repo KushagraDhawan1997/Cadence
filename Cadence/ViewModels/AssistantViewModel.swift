@@ -7,7 +7,6 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Dependencies
     private let service: APIClient
     private let errorHandler: ErrorHandling
-    private let threadKey = "current_thread_id"
     
     // MARK: - Published Properties
     @Published private(set) var threads: [ThreadModel] = []
@@ -18,28 +17,16 @@ class AssistantViewModel: ObservableObject {
     @Published private(set) var streamingResponse: String = ""
     @Published private(set) var isStreaming = false
     
+    // Add task storage
+    private var currentTask: Task<Void, Error>?
+    
     // MARK: - Initialization
     init(service: APIClient, errorHandler: ErrorHandling) {
         self.service = service
         self.errorHandler = errorHandler
-        Task {
-            await loadSavedThread()
-        }
     }
     
     // MARK: - Thread Management
-    private func loadSavedThread() async {
-        if UserDefaults.standard.string(forKey: threadKey) != nil {
-            do {
-                try await createThread()
-            } catch {
-                let appError = errorHandler.handle(error)
-                self.error = appError
-                errorHandler.log(appError)
-            }
-        }
-    }
-    
     func createThread() async throws {
         isLoading = true
         error = nil
@@ -53,11 +40,6 @@ class AssistantViewModel: ObservableObject {
                 threads.append(newThread)
                 currentThread = newThread
                 messages = [] // Clear messages for new thread
-                
-                // Save thread ID
-                if let threadId = currentThread?.id {
-                    UserDefaults.standard.set(threadId, forKey: threadKey)
-                }
                 
                 print("Thread created: \(newThread.id)")
             }
@@ -97,7 +79,6 @@ class AssistantViewModel: ObservableObject {
         if thread.id == currentThread?.id {
             currentThread = nil
             messages = []
-            UserDefaults.standard.removeObject(forKey: threadKey)
         }
         
         // Remove the thread from our local array
@@ -117,43 +98,60 @@ class AssistantViewModel: ObservableObject {
             throw error
         }
         
+        // Cancel any existing task
+        currentTask?.cancel()
+        
         isLoading = true
         isStreaming = false
         streamingResponse = ""
         error = nil
         
-        do {
-            try await errorHandler.handleWithRetry { [weak self] in
-                guard let self = self else { return }
-                // Send user message
-                let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
-                let _: MessageResponse = try await service.sendRequest(messageRequest)
-                
-                // Update messages immediately with user message
-                try await updateMessages(threadId: threadId)
-                
-                // Create and monitor streaming run
-                print("Creating streaming run for message")
-                let runRequest = CreateRunRequest(threadId: threadId)
-                
-                isStreaming = true
-                try await service.streamRequest(runRequest) { [weak self] (response: String) in
+        currentTask = Task {
+            do {
+                try await errorHandler.handleWithRetry { [weak self] in
                     guard let self = self else { return }
-                    self.streamingResponse = response
+                    try Task.checkCancellation()
+                    
+                    // Send user message
+                    let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
+                    let _: MessageResponse = try await service.sendRequest(messageRequest)
+                    
+                    try Task.checkCancellation()
+                    try await updateMessages(threadId: threadId)
+                    
+                    // Create and monitor streaming run
+                    print("Creating streaming run for message")
+                    let runRequest = CreateRunRequest(threadId: threadId)
+                    
+                    isStreaming = true
+                    try await service.streamRequest(runRequest) { [weak self] (response: String) in
+                        guard let self = self else { return }
+                        self.streamingResponse = response
+                    }
+                    
+                    try Task.checkCancellation()
+                    try await updateMessages(threadId: threadId)
+                    isStreaming = false
+                    isLoading = false
                 }
-                
-                // After streaming completes, update messages to include the full response
-                try await updateMessages(threadId: threadId)
+            } catch is CancellationError {
+                print("Task was cancelled")
                 isStreaming = false
                 isLoading = false
+            } catch {
+                let appError = errorHandler.handle(error)
+                self.error = appError
+                isStreaming = false
+                isLoading = false
+                throw appError
             }
-        } catch {
-            let appError = errorHandler.handle(error)
-            self.error = appError
-            isStreaming = false
-            isLoading = false
-            throw appError
         }
+        
+        try await currentTask?.value
+    }
+    
+    func cancelCurrentTask() {
+        currentTask?.cancel()
     }
     
     // MARK: - Message Retrieval
