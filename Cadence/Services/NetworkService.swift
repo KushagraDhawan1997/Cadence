@@ -3,6 +3,7 @@ import Foundation
 // MARK: - Network Protocols
 protocol APIClient {
     func sendRequest<T: Decodable>(_ request: APIRequest) async throws -> T
+    func streamRequest<T: Decodable>(_ request: APIRequest, onReceive: @escaping (T) -> Void) async throws
 }
 
 protocol APIRequest {
@@ -11,6 +12,11 @@ protocol APIRequest {
     var headers: [String: String] { get }
     var queryItems: [String: String]? { get }
     var body: [String: Any]? { get }
+    var stream: Bool { get }
+}
+
+extension APIRequest {
+    var stream: Bool { false }
 }
 
 // MARK: - Network Errors
@@ -27,8 +33,160 @@ class OpenAIService: APIClient {
     private let maxRetries = 3
     private let retryDelay: UInt64 = 2_000_000_000 // 2 seconds
     
-    init() {
-        // No need for apiKey parameter anymore
+    func streamRequest<T>(_ request: APIRequest, onReceive: @escaping (T) -> Void) async throws where T: Decodable {
+        guard var urlComponents = URLComponents(string: Config.API.baseURL + request.path) else {
+            throw NetworkError.invalidURL
+        }
+        
+        if let queryItems = request.queryItems {
+            urlComponents.queryItems = queryItems.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        
+        guard let url = urlComponents.url else {
+            throw NetworkError.invalidURL
+        }
+        
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = request.method
+        urlRequest.timeoutInterval = 30
+        
+        let headers = Config.API.headers.merging(request.headers) { _, new in new }
+        headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
+        
+        if let body = request.body {
+            var streamingBody = body
+            streamingBody["stream"] = true
+            let jsonData = try JSONSerialization.data(withJSONObject: streamingBody)
+            urlRequest.httpBody = jsonData
+            print("Stream Request URL: \(url)")
+            print("Stream Request Body: \(String(data: jsonData, encoding: .utf8) ?? "")")
+        }
+        
+        let session = URLSession.shared
+        let (result, response) = try await session.bytes(for: urlRequest)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw NetworkError.invalidResponse
+        }
+        
+        print("Stream Response Status Code: \(httpResponse.statusCode)")
+        
+        let decoder = JSONDecoder()
+        var buffer = ""
+        var isWaitingForResponse = false
+        
+        for try await line in result.lines {
+            print("Raw stream line: \(line)")
+            guard !line.isEmpty else { continue }
+            
+            if line.hasPrefix("data: ") {
+                let jsonString = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                if jsonString == "[DONE]" {
+                    print("Stream complete")
+                    if isWaitingForResponse {
+                        // Wait briefly for the final response
+                        try await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
+                        try await retrieveAndStreamFinalResponse(request: request, onReceive: onReceive)
+                    }
+                    continue
+                }
+                
+                guard let jsonData = jsonString.data(using: .utf8) else { continue }
+                
+                do {
+                    // First try to decode as RunResponse to check for required_action
+                    if let runResponse = try? decoder.decode(RunResponse.self, from: jsonData),
+                       runResponse.status == "requires_action",
+                       let action = runResponse.requiredAction,
+                       action.type == "submit_tool_outputs",
+                       let tools = action.submitToolOutputs {
+                        
+                        // Handle tool calls
+                        try await handleToolCalls(tools.toolCalls,
+                                                threadId: request.path.components(separatedBy: "/")[2],
+                                                runId: runResponse.id)
+                        isWaitingForResponse = true
+                        continue
+                    }
+                    
+                    // Then try to decode as MessageContent for streaming text
+                    if T.self == String.self {
+                        if let messageData = try? decoder.decode(StreamResponse.self, from: jsonData) {
+                            if let content = messageData.delta?.content?.first?.text?.value {
+                                buffer += content
+                                onReceive(buffer as! T)
+                            } else if let content = messageData.data?.content?.first?.text?.value {
+                                buffer += content
+                                onReceive(buffer as! T)
+                            }
+                        }
+                    } else {
+                        let decoded = try decoder.decode(T.self, from: jsonData)
+                        onReceive(decoded)
+                    }
+                } catch {
+                    print("Stream decoding error: \(error)")
+                    continue
+                }
+            }
+        }
+    }
+    
+    private func retrieveAndStreamFinalResponse<T>(
+        request: APIRequest,
+        onReceive: @escaping (T) -> Void
+    ) async throws where T: Decodable {
+        let threadId = request.path.components(separatedBy: "/")[2]
+        let messagesRequest = ListMessagesRequest(threadId: threadId, limit: 1, order: "desc")
+        let response: ListMessagesResponse = try await sendRequest(messagesRequest)
+        
+        if let lastMessage = response.data.first,
+           let content = lastMessage.content.first?.text?.value,
+           T.self == String.self {
+            onReceive(content as! T)
+        }
+    }
+    
+    private func handleToolCalls(_ toolCalls: [ToolCall], threadId: String, runId: String) async throws {
+        var outputs: [[String: String]] = []
+        
+        for call in toolCalls {
+            if call.type == "function" {
+                do {
+                    print(" Executing function: \(call.function.name) with args: \(call.function.arguments)")
+                    let result = try await executeFunction(name: call.function.name, arguments: call.function.arguments)
+                    outputs.append(["tool_call_id": call.id, "output": result])
+                } catch {
+                    print(" Function execution failed: \(error)")
+                    throw error
+                }
+            }
+        }
+        
+        if !outputs.isEmpty {
+            let request = SubmitToolOutputsRequest(threadId: threadId, runId: runId, toolOutputs: outputs)
+            let _: RunResponse = try await sendRequest(request)
+        }
+    }
+    
+    private func executeFunction(name: String, arguments: String) async throws -> String {
+        guard let jsonData = arguments.data(using: .utf8),
+              let args = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid function arguments"]))
+        }
+        
+        switch name {
+        case "add_test_workout":
+            guard let details = args["workout_details"] as? String else {
+                throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid workout details"]))
+            }
+            print(" Workout Details Received: \(details)")
+            return "Successfully logged workout: \(details)"
+            
+        default:
+            throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown function: \(name)"]))
+        }
     }
     
     func sendRequest<T>(_ request: APIRequest) async throws -> T where T : Decodable {
@@ -56,7 +214,6 @@ class OpenAIService: APIClient {
             throw NetworkError.invalidURL
         }
         
-        // Add query items if present
         if let queryItems = request.queryItems {
             urlComponents.queryItems = queryItems.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
@@ -67,13 +224,11 @@ class OpenAIService: APIClient {
         
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = request.method
-        urlRequest.timeoutInterval = 30 // Increase timeout to 30 seconds
+        urlRequest.timeoutInterval = 30
         
-        // Merge request headers with default API headers
         let headers = Config.API.headers.merging(request.headers) { _, new in new }
         headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
         
-        // Add body if present and encode it properly
         if let body = request.body {
             let jsonData = try JSONSerialization.data(withJSONObject: body)
             urlRequest.httpBody = jsonData
@@ -107,4 +262,22 @@ class OpenAIService: APIClient {
             throw NetworkError.requestFailed(error)
         }
     }
+}
+
+struct StreamResponse: Codable {
+    let id: String
+    let object: String
+    let event: String?
+    let data: StreamData?
+    let delta: StreamDelta?
+}
+
+struct StreamData: Codable {
+    let role: String?
+    let content: [MessageContent]?
+}
+
+struct StreamDelta: Codable {
+    let role: String?
+    let content: [MessageContent]?
 }

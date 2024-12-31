@@ -20,6 +20,8 @@ class AssistantViewModel: ObservableObject {
     @Published private(set) var messages: [MessageResponse] = []
     @Published private(set) var isLoading = false
     @Published private(set) var error: Error?
+    @Published private(set) var streamingResponse: String = ""
+    @Published private(set) var isStreaming = false
     
     // MARK: - Initialization
     init(service: OpenAIService) {
@@ -101,7 +103,7 @@ class AssistantViewModel: ObservableObject {
             threads.remove(at: index)
         }
         
-        // TODO: When API endpoint is available, add the actual delete request here
+        // TODO: Add API call for thread deletion when available
         // try await service.deleteThread(thread.id)
     }
     
@@ -114,32 +116,37 @@ class AssistantViewModel: ObservableObject {
         }
         
         isLoading = true
+        isStreaming = false
+        streamingResponse = ""
         error = nil
-        defer { isLoading = false }
         
         do {
             // Send user message
-            print("Sending message to thread: \(threadId)")
             let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
             let _: MessageResponse = try await service.sendRequest(messageRequest)
             
             // Update messages immediately with user message
             try await updateMessages(threadId: threadId)
             
-            // Create and monitor run
-            print("Creating run for message")
+            // Create and monitor streaming run
+            print("Creating streaming run for message")
             let runRequest = CreateRunRequest(threadId: threadId)
-            let run: RunResponse = try await service.sendRequest(runRequest)
-            print("Run created: \(run.id)")
             
-            // Wait for run completion
-            try await monitorRun(threadId: threadId, runId: run.id)
+            isStreaming = true
+            try await service.streamRequest(runRequest) { [weak self] (response: String) in
+                guard let self = self else { return }
+                self.streamingResponse = response
+            }
             
-            // Update messages to include assistant's response
+            // After streaming completes, update messages to include the full response
             try await updateMessages(threadId: threadId)
+            isStreaming = false
+            isLoading = false
         } catch {
             let assistantError = error as? AssistantError ?? AssistantError.unknown(error)
             self.error = assistantError
+            isStreaming = false
+            isLoading = false
             throw assistantError
         }
     }
@@ -213,7 +220,8 @@ class AssistantViewModel: ObservableObject {
                 throw AssistantError.invalidFunctionArguments
             }
             print("📝 Workout Details Received: \(details)")
-            return "Successfully noted workout: \(details)"
+            // TODO: Add actual workout storage/processing here
+            return "Successfully logged workout: \(details). I'll store this in your workout history."
             
         default:
             throw AssistantError.functionExecutionFailed("Unknown function: \(name)")

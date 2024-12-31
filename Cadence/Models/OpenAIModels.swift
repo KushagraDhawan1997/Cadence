@@ -27,6 +27,79 @@ struct ThreadModel: Codable, Equatable {
     }
 }
 
+// MARK: - Streaming Models
+struct RunStreamResponse: Codable {
+    let id: String
+    let object: String
+    let createdAt: Int
+    let event: String?
+    let data: StreamMessageData?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, event, data
+        case createdAt = "created_at"
+    }
+}
+
+struct StreamMessageData: Codable {
+    let id: String?
+    let object: String?
+    let createdAt: Int?
+    let threadId: String?
+    let role: String?
+    let content: [MessageContent]?
+    let status: String?
+    let completedAt: Int?
+    let usage: Usage?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, role, content, status, usage
+        case createdAt = "created_at"
+        case threadId = "thread_id"
+        case completedAt = "completed_at"
+    }
+}
+
+struct MessageDeltaResponse: Codable {
+    let id: String
+    let object: String
+    let createdAt: Int
+    let threadId: String?
+    let role: String?
+    let content: [MessageContent]?
+    let delta: DeltaContent
+    
+    enum CodingKeys: String, CodingKey {
+        case id, object, delta, role, content
+        case createdAt = "created_at"
+        case threadId = "thread_id"
+    }
+}
+
+struct DeltaContent: Codable {
+    let type: String?
+    let text: TextContent?
+    let content: [ContentDelta]?
+}
+
+struct ContentDelta: Codable {
+    let type: String
+    let text: TextContent?
+    let index: Int?
+}
+
+struct Usage: Codable {
+    let promptTokens: Int?
+    let completionTokens: Int?
+    let totalTokens: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+}
+
 // MARK: - Function Models
 struct Function: Codable {
     let name: String
@@ -41,14 +114,12 @@ struct Function: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encode(description, forKey: .description)
-        // Handle parameters encoding based on your needs
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         description = try container.decode(String.self, forKey: .description)
-        // Handle parameters decoding based on your needs
         parameters = [:]
     }
 }
@@ -107,6 +178,7 @@ struct CreateMessageRequest: APIRequest {
 
 struct CreateRunRequest: APIRequest {
     let threadId: String
+    var stream: Bool { true }
     
     var path: String { "/threads/\(threadId)/runs" }
     var method: String { "POST" }
