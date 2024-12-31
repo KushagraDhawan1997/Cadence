@@ -31,7 +31,7 @@ class AssistantViewModel: ObservableObject {
     
     // MARK: - Thread Management
     private func loadSavedThread() async {
-        if let threadId = UserDefaults.standard.string(forKey: threadKey) {
+        if UserDefaults.standard.string(forKey: threadKey) != nil {
             // TODO: Implement thread retrieval
             // For now, we'll just create a new thread if loading fails
             do {
@@ -82,6 +82,27 @@ class AssistantViewModel: ObservableObject {
             self.error = assistantError
             throw assistantError
         }
+    }
+    
+    func deleteThread(_ thread: ThreadModel) async throws {
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+        
+        // If we're deleting the current thread, clear it
+        if thread.id == currentThread?.id {
+            currentThread = nil
+            messages = []
+            UserDefaults.standard.removeObject(forKey: threadKey)
+        }
+        
+        // Remove the thread from our local array
+        if let index = threads.firstIndex(where: { $0.id == thread.id }) {
+            threads.remove(at: index)
+        }
+        
+        // TODO: When API endpoint is available, add the actual delete request here
+        // try await service.deleteThread(thread.id)
     }
     
     // MARK: - Message Management

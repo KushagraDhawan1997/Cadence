@@ -31,13 +31,27 @@ struct ContentView: View {
                             }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Thread #\(String(thread.id.suffix(8)))")
+                            Text("Thread \(String(thread.id.suffix(4)))")
                                 .font(.headline)
                             Text(formatDate(Date(timeIntervalSince1970: TimeInterval(thread.createdAt))))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 4)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task {
+                                do {
+                                let threadToDelete = thread
+                                try await viewModel.deleteThread(threadToDelete)
+                            } catch {
+                                showError = true
+                            }
+                        }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
                 }
             }
