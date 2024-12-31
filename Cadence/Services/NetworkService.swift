@@ -30,10 +30,26 @@ enum NetworkError: Error {
 
 // MARK: - OpenAI Service
 class OpenAIService: APIClient {
+    // MARK: - Dependencies
+    private let networkMonitor: NetworkMonitor
+    private let errorHandler: ErrorHandling
+    
+    // MARK: - Properties
     private let maxRetries = 3
     private let retryDelay: UInt64 = 2_000_000_000 // 2 seconds
     
+    // MARK: - Initialization
+    init(networkMonitor: NetworkMonitor, errorHandler: ErrorHandling) {
+        self.networkMonitor = networkMonitor
+        self.errorHandler = errorHandler
+    }
+    
     func streamRequest<T>(_ request: APIRequest, onReceive: @escaping (T) -> Void) async throws where T: Decodable {
+        // Check network availability
+        guard networkMonitor.isConnected else {
+            throw AppError.network(.invalidResponse)
+        }
+        
         guard var urlComponents = URLComponents(string: Config.API.baseURL + request.path) else {
             throw NetworkError.invalidURL
         }
@@ -63,20 +79,18 @@ class OpenAIService: APIClient {
         }
         
         let session = URLSession.shared
-        let (result, response) = try await session.bytes(for: urlRequest)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.invalidResponse
-        }
-        
-        print("Stream Response Status Code: \(httpResponse.statusCode)")
+        let (result, _) = try await session.bytes(for: urlRequest)
         
         let decoder = JSONDecoder()
         var buffer = ""
         var isWaitingForResponse = false
         
         for try await line in result.lines {
+            // Check network availability during streaming
+            guard networkMonitor.isConnected else {
+                throw AppError.network(.invalidResponse)
+            }
+            
             print("Raw stream line: \(line)")
             guard !line.isEmpty else { continue }
             
@@ -190,6 +204,11 @@ class OpenAIService: APIClient {
     }
     
     func sendRequest<T>(_ request: APIRequest) async throws -> T where T : Decodable {
+        // Check network availability
+        guard networkMonitor.isConnected else {
+            throw AppError.network(.invalidResponse)
+        }
+        
         var lastError: Error?
         
         for attempt in 1...maxRetries {
@@ -197,11 +216,15 @@ class OpenAIService: APIClient {
                 return try await performRequest(request)
             } catch {
                 lastError = error
-                print("Attempt \(attempt) failed: \(error)")
+                errorHandler.log(error)
+                
+                // Check if network is still available
+                guard networkMonitor.isConnected else {
+                    throw AppError.network(.invalidResponse)
+                }
                 
                 if attempt < maxRetries {
-                    try await Task.sleep(nanoseconds: retryDelay)
-                    print("Retrying request...")
+                    try await Task.sleep(nanoseconds: retryDelay * UInt64(attempt))
                 }
             }
         }

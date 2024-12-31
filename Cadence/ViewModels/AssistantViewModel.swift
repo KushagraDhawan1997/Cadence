@@ -1,17 +1,12 @@
 import Foundation
 
-// MARK: - Custom Errors
-enum AssistantError: Error {
-    case noActiveThread
-    case functionExecutionFailed(String)
-    case invalidFunctionArguments
-    case runFailed(String)
-    case unknown(Error)
-}
+// MARK: - Custom Errors removed since we're using AppError
 
 @MainActor
 class AssistantViewModel: ObservableObject {
-    private let service: OpenAIService
+    // MARK: - Dependencies
+    private let service: APIClient
+    private let errorHandler: ErrorHandling
     private let threadKey = "current_thread_id"
     
     // MARK: - Published Properties
@@ -24,8 +19,9 @@ class AssistantViewModel: ObservableObject {
     @Published private(set) var isStreaming = false
     
     // MARK: - Initialization
-    init(service: OpenAIService) {
+    init(service: APIClient, errorHandler: ErrorHandling) {
         self.service = service
+        self.errorHandler = errorHandler
         Task {
             await loadSavedThread()
         }
@@ -34,12 +30,12 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Thread Management
     private func loadSavedThread() async {
         if UserDefaults.standard.string(forKey: threadKey) != nil {
-            // TODO: Implement thread retrieval
-            // For now, we'll just create a new thread if loading fails
             do {
                 try await createThread()
             } catch {
-                print("Failed to load saved thread: \(error)")
+                let appError = errorHandler.handle(error)
+                self.error = appError
+                errorHandler.log(appError)
             }
         }
     }
@@ -50,22 +46,25 @@ class AssistantViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            let request = CreateThreadRequest(messages: nil)
-            let newThread: ThreadModel = try await service.sendRequest(request)
-            threads.append(newThread)
-            currentThread = newThread
-            messages = [] // Clear messages for new thread
-            
-            // Save thread ID
-            if let threadId = currentThread?.id {
-                UserDefaults.standard.set(threadId, forKey: threadKey)
+            try await errorHandler.handleWithRetry { [weak self] in
+                guard let self = self else { return }
+                let request = CreateThreadRequest(messages: nil)
+                let newThread: ThreadModel = try await service.sendRequest(request)
+                threads.append(newThread)
+                currentThread = newThread
+                messages = [] // Clear messages for new thread
+                
+                // Save thread ID
+                if let threadId = currentThread?.id {
+                    UserDefaults.standard.set(threadId, forKey: threadKey)
+                }
+                
+                print("Thread created: \(newThread.id)")
             }
-            
-            print("Thread created: \(newThread.id)")
         } catch {
-            let assistantError = AssistantError.unknown(error)
-            self.error = assistantError
-            throw assistantError
+            let appError = errorHandler.handle(error)
+            self.error = appError
+            throw appError
         }
     }
     
@@ -77,12 +76,15 @@ class AssistantViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            currentThread = thread
-            messages = try await retrieveMessages(threadId: thread.id)
+            try await errorHandler.handleWithRetry { [weak self] in
+                guard let self = self else { return }
+                currentThread = thread
+                messages = try await retrieveMessages(threadId: thread.id)
+            }
         } catch {
-            let assistantError = AssistantError.unknown(error)
-            self.error = assistantError
-            throw assistantError
+            let appError = errorHandler.handle(error)
+            self.error = appError
+            throw appError
         }
     }
     
@@ -110,7 +112,7 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Message Management
     func sendMessage(_ content: String) async throws {
         guard let threadId = currentThread?.id else {
-            let error = AssistantError.noActiveThread
+            let error = AppError.userError("No active thread")
             self.error = error
             throw error
         }
@@ -121,33 +123,36 @@ class AssistantViewModel: ObservableObject {
         error = nil
         
         do {
-            // Send user message
-            let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
-            let _: MessageResponse = try await service.sendRequest(messageRequest)
-            
-            // Update messages immediately with user message
-            try await updateMessages(threadId: threadId)
-            
-            // Create and monitor streaming run
-            print("Creating streaming run for message")
-            let runRequest = CreateRunRequest(threadId: threadId)
-            
-            isStreaming = true
-            try await service.streamRequest(runRequest) { [weak self] (response: String) in
+            try await errorHandler.handleWithRetry { [weak self] in
                 guard let self = self else { return }
-                self.streamingResponse = response
+                // Send user message
+                let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
+                let _: MessageResponse = try await service.sendRequest(messageRequest)
+                
+                // Update messages immediately with user message
+                try await updateMessages(threadId: threadId)
+                
+                // Create and monitor streaming run
+                print("Creating streaming run for message")
+                let runRequest = CreateRunRequest(threadId: threadId)
+                
+                isStreaming = true
+                try await service.streamRequest(runRequest) { [weak self] (response: String) in
+                    guard let self = self else { return }
+                    self.streamingResponse = response
+                }
+                
+                // After streaming completes, update messages to include the full response
+                try await updateMessages(threadId: threadId)
+                isStreaming = false
+                isLoading = false
             }
-            
-            // After streaming completes, update messages to include the full response
-            try await updateMessages(threadId: threadId)
-            isStreaming = false
-            isLoading = false
         } catch {
-            let assistantError = error as? AssistantError ?? AssistantError.unknown(error)
-            self.error = assistantError
+            let appError = errorHandler.handle(error)
+            self.error = appError
             isStreaming = false
             isLoading = false
-            throw assistantError
+            throw appError
         }
     }
     
@@ -181,7 +186,7 @@ class AssistantViewModel: ObservableObject {
                     try await handleToolCalls(tools.toolCalls, threadId: threadId, runId: runId)
                 }
             case "failed", "cancelled", "expired":
-                throw AssistantError.runFailed("Run failed with status: \(run.status)")
+                throw AppError.systemError("Run failed with status: \(run.status)")
             default:
                 try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
                 continue
@@ -210,21 +215,21 @@ class AssistantViewModel: ObservableObject {
         
         guard let jsonData = arguments.data(using: .utf8),
               let args = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-            throw AssistantError.invalidFunctionArguments
+            throw AppError.systemError("Invalid function arguments")
         }
         
         // Handle dashboard-configured functions
         switch name {
         case "add_test_workout":
             guard let details = args["workout_details"] as? String else {
-                throw AssistantError.invalidFunctionArguments
+                throw AppError.systemError("Invalid function arguments")
             }
             print("📝 Workout Details Received: \(details)")
             // TODO: Add actual workout storage/processing here
             return "Successfully logged workout: \(details). I'll store this in your workout history."
             
         default:
-            throw AssistantError.functionExecutionFailed("Unknown function: \(name)")
+            throw AppError.systemError("Unknown function: \(name)")
         }
     }
 }

@@ -9,65 +9,93 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel: AssistantViewModel
+    @ObservedObject private var networkMonitor: NetworkMonitor
     @State private var showError = false
     @State private var showChat = false
     
-    init() {
-        _viewModel = StateObject(wrappedValue: AssistantViewModel(service: OpenAIService()))
+    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
+        _viewModel = StateObject(wrappedValue: AssistantViewModel(service: service, errorHandler: errorHandler))
+        self.networkMonitor = networkMonitor
     }
     
     var body: some View {
         NavigationStack {
-            List {
-                ForEach(viewModel.threads, id: \.id) { thread in
-                    NavigationLink {
-                        ChatView(viewModel: viewModel)
-                            .task {
-                                do {
-                                    try await viewModel.selectThread(thread)
-                                } catch {
-                                    showError = true
+            ZStack {
+                // Network Status remains on top
+                NetworkStatusView(networkMonitor: networkMonitor)
+                    .animation(.easeInOut, value: networkMonitor.isConnected)
+                
+                // Main content
+                VStack {
+                    List {
+                        ForEach(viewModel.threads, id: \.id) { thread in
+                            NavigationLink {
+                                ChatView(viewModel: viewModel)
+                                    .task {
+                                        do {
+                                            try await viewModel.selectThread(thread)
+                                        } catch {
+                                            showError = true
+                                        }
+                                    }
+                            } label: {
+                                VStack(alignment: .leading, spacing: Constants.Layout.smallPadding) {
+                                    Text("Thread \(String(thread.id.suffix(4)))")
+                                        .font(.headline)
+                                        .foregroundColor(Constants.Colors.textPrimary)
+                                    Text(formatDate(Date(timeIntervalSince1970: TimeInterval(thread.createdAt))))
+                                        .font(.subheadline)
+                                        .foregroundColor(Constants.Colors.textSecondary)
+                                }
+                                .padding(.vertical, Constants.Layout.smallPadding)
+                                .contentShape(Rectangle())
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        do {
+                                            let threadToDelete = thread
+                                            try await viewModel.deleteThread(threadToDelete)
+                                        } catch {
+                                            showError = true
+                                        }
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
                             }
-                    } label: {
-                        VStack(alignment: .leading, spacing: Constants.Layout.smallPadding) {
-                            Text("Thread \(String(thread.id.suffix(4)))")
+                            .transition(.opacity.combined(with: .slide))
+                        }
+                    }
+                    .navigationTitle("Threads")
+                    .toolbar {
+                        Button(action: createThread) {
+                            Label("New Thread", systemImage: "plus")
                                 .font(.headline)
-                                .foregroundColor(Constants.Colors.textPrimary)
-                            Text(formatDate(Date(timeIntervalSince1970: TimeInterval(thread.createdAt))))
-                                .font(.subheadline)
-                                .foregroundColor(Constants.Colors.textSecondary)
                         }
-                        .padding(.vertical, Constants.Layout.smallPadding)
+                        .disabled(viewModel.isLoading)
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            Task {
-                                do {
-                                    let threadToDelete = thread
-                                    try await viewModel.deleteThread(threadToDelete)
-                                } catch {
-                                    showError = true
+                    .overlay {
+                        if viewModel.threads.isEmpty && !viewModel.isLoading {
+                            ContentUnavailableView {
+                                Label("No Threads", systemImage: "bubble.left.and.bubble.right")
+                            } description: {
+                                Text("Create a new thread to start chatting")
+                            } actions: {
+                                Button(action: createThread) {
+                                    Label("New Thread", systemImage: "plus")
                                 }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(viewModel.isLoading)
                             }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
-            }
-            .navigationTitle("Threads")
-            .toolbar {
-                Button(action: createThread) {
-                    Label("New Thread", systemImage: "plus")
-                        .font(.headline)
-                }
-            }
-            .alert("Error", isPresented: $showError) {
-                Button("OK") { }
-            } message: {
-                if let error = viewModel.error {
-                    Text(error.localizedDescription)
+                
+                // Loading overlay
+                if viewModel.isLoading {
+                    LoadingView("Loading...")
+                        .transition(.opacity)
                 }
             }
         }
@@ -76,6 +104,13 @@ struct ContentView: View {
                 try await viewModel.createThread()
             } catch {
                 showError = true
+            }
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK") { }
+        } message: {
+            if let error = viewModel.error {
+                Text(error.localizedDescription)
             }
         }
     }
@@ -117,6 +152,11 @@ struct ChatView: View {
                 onSend: sendMessage
             )
         }
+        .overlay {
+            if viewModel.isLoading && !viewModel.isStreaming {
+                ProgressView("Loading messages...")
+            }
+        }
         .navigationTitle("Chat")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showError) {
@@ -129,6 +169,8 @@ struct ChatView: View {
         .onAppear {
             isInputFocused = true
         }
+        .animation(.spring(response: 0.3), value: viewModel.isLoading)
+        .animation(.spring(response: 0.3), value: viewModel.isStreaming)
         .submitLabel(.send)
         .onSubmit {
             if !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isLoading {
@@ -290,40 +332,11 @@ struct StreamingMessageView: View {
 }
 
 struct TypingIndicatorView: View {
-    @State private var showDots = false
-    
     var body: some View {
-        HStack {
-            Spacer(minLength: Constants.Layout.defaultPadding)
-            
-            HStack(spacing: 4) {
-                ForEach(0..<3) { index in
-                    Circle()
-                        .frame(width: 6, height: 6)
-                        .opacity(showDots ? 1 : 0.5)
-                        .animation(
-                            Animation
-                                .easeInOut(duration: 0.6)
-                                .repeatForever()
-                                .delay(0.2 * Double(index)),
-                            value: showDots
-                        )
-                }
-            }
-            .padding(.horizontal, Constants.Layout.defaultPadding)
-            .padding(.vertical, Constants.Layout.smallPadding)
-            .background(Constants.Colors.assistantMessageBubble)
-            .clipShape(RoundedRectangle(cornerRadius: Constants.Layout.messageCornerRadius, style: .continuous))
-            .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-            
-            Spacer()
-        }
-        .padding(.vertical, Constants.Layout.smallPadding)
-        .onAppear {
-            showDots = true
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Assistant is typing")
+        ProgressView()
+            .padding(.vertical, 8)
+            .padding(.horizontal)
+            .accessibilityLabel("Assistant is typing")
     }
 }
 
@@ -368,6 +381,25 @@ struct ChatInputView: View {
     }
 }
 
-#Preview {
-    ContentView()
+struct PreviewContainer: View {
+    var body: some View {
+        let container = DependencyContainer.shared
+        container.registerServices()
+        
+        return Group {
+            if let service = container.resolve(APIClient.self),
+               let errorHandler = container.resolve(ErrorHandling.self),
+               let networkMonitor = container.resolve(NetworkMonitor.self) {
+                ContentView(service: service, errorHandler: errorHandler, networkMonitor: networkMonitor)
+            } else {
+                Text("Failed to initialize services")
+            }
+        }
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        PreviewContainer()
+    }
 }
