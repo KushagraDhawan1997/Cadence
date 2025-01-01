@@ -4,18 +4,40 @@ import Foundation
 
 @MainActor
 class AssistantViewModel: ObservableObject {
+    // Add new enum for thread grouping
+    enum ThreadGroup: String, CaseIterable {
+        case today = "Today"
+        case yesterday = "Yesterday"
+        case lastWeek = "Last Week"
+        case earlier = "Earlier"
+    }
+    
+    // Add grouped threads structure
+    struct GroupedThreads: Identifiable {
+        let id: ThreadGroup
+        let threads: [ThreadModel]
+        var title: String { id.rawValue }
+        var count: Int { threads.count }
+    }
+    
     // MARK: - Dependencies
     private let service: APIClient
     private let errorHandler: ErrorHandling
     
     // MARK: - Published Properties
-    @Published private(set) var threads: [ThreadModel] = []
+    @Published private(set) var threads: [ThreadModel] = [] {
+        didSet {
+            groupedThreads = groupThreadsByDate(threads)
+        }
+    }
+    @Published private(set) var groupedThreads: [GroupedThreads] = []
     @Published private(set) var currentThread: ThreadModel?
     @Published private(set) var messages: [MessageResponse] = []
     @Published private(set) var isLoading = false
     @Published private(set) var error: Error?
     @Published private(set) var streamingResponse: String = ""
     @Published private(set) var isStreaming = false
+    @Published private(set) var isWaitingForResponse = false
     
     // Add task storage
     private var currentTask: Task<Void, Error>?
@@ -24,6 +46,36 @@ class AssistantViewModel: ObservableObject {
     init(service: APIClient, errorHandler: ErrorHandling) {
         self.service = service
         self.errorHandler = errorHandler
+    }
+    
+    // Add this function before the Thread Management section
+    private func groupThreadsByDate(_ threads: [ThreadModel]) -> [GroupedThreads] {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        let grouped = Dictionary(grouping: threads) { thread in
+            let threadDate = Date(timeIntervalSince1970: TimeInterval(thread.createdAt))
+            let components = calendar.dateComponents([.day], from: threadDate, to: now)
+            
+            guard let days = components.day else { return ThreadGroup.earlier }
+            
+            switch days {
+            case 0:
+                return ThreadGroup.today
+            case 1:
+                return ThreadGroup.yesterday
+            case 2...7:
+                return ThreadGroup.lastWeek
+            default:
+                return ThreadGroup.earlier
+            }
+        }
+        
+        return ThreadGroup.allCases.compactMap { group in
+            let threadsInGroup = grouped[group, default: []]
+            if threadsInGroup.isEmpty { return nil }
+            return GroupedThreads(id: group, threads: threadsInGroup)
+        }
     }
     
     // MARK: - Thread Management
@@ -101,6 +153,20 @@ class AssistantViewModel: ObservableObject {
         // Cancel any existing task
         currentTask?.cancel()
         
+        // Immediately add the user's message to the UI
+        let temporaryUserMessage = MessageResponse(
+            id: UUID().uuidString,
+            object: "thread.message",
+            createdAt: Int(Date().timeIntervalSince1970),
+            threadId: threadId,
+            role: "user",
+            content: [MessageContent(
+                type: "text",
+                text: TextContent(value: content, annotations: nil)
+            )]
+        )
+        messages.append(temporaryUserMessage)
+        
         isLoading = true
         isStreaming = false
         streamingResponse = ""
@@ -112,7 +178,7 @@ class AssistantViewModel: ObservableObject {
                     guard let self = self else { return }
                     try Task.checkCancellation()
                     
-                    // Send user message
+                    // Send user message to API
                     let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
                     let _: MessageResponse = try await service.sendRequest(messageRequest)
                     
@@ -158,7 +224,30 @@ class AssistantViewModel: ObservableObject {
     private func updateMessages(threadId: String) async throws {
         let request = ListMessagesRequest(threadId: threadId, limit: 100, order: "desc")
         let response: ListMessagesResponse = try await service.sendRequest(request)
-        messages = response.data.reversed() // Reverse to show oldest first
+        
+        // Create a map of existing messages by content for quick lookup
+        let existingMessageMap = Dictionary(grouping: messages) { message in
+            message.content.first?.text?.value ?? ""
+        }
+        
+        // Process new messages, preserving IDs for matching content
+        let updatedMessages = response.data.map { newMessage in
+            if let existingMessage = existingMessageMap[newMessage.content.first?.text?.value ?? ""]?.first {
+                // Preserve the ID but update other properties
+                return MessageResponse(
+                    id: existingMessage.id,
+                    object: newMessage.object,
+                    createdAt: newMessage.createdAt,
+                    threadId: newMessage.threadId,
+                    role: newMessage.role,
+                    content: newMessage.content
+                )
+            } else {
+                return newMessage
+            }
+        }
+        
+        messages = updatedMessages.reversed() // Reverse to show oldest first
     }
     
     private func retrieveMessages(threadId: String) async throws -> [MessageResponse] {
@@ -229,5 +318,6 @@ class AssistantViewModel: ObservableObject {
         default:
             throw AppError.systemError("Unknown function: \(name)")
         }
+
     }
 }

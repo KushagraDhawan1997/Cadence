@@ -16,7 +16,7 @@ struct AssistantModel: Codable {
     }
 }
 
-struct ThreadModel: Codable, Equatable {
+struct ThreadModel: Codable, Equatable, Identifiable {
     let id: String
     let object: String
     let createdAt: Int
@@ -28,7 +28,7 @@ struct ThreadModel: Codable, Equatable {
 }
 
 // MARK: - Streaming Models
-struct RunStreamResponse: Codable {
+struct RunStreamResponse: Codable, Identifiable {
     let id: String
     let object: String
     let createdAt: Int
@@ -238,7 +238,7 @@ struct SubmitToolOutputsRequest: APIRequest {
 }
 
 // MARK: - Response Models
-struct MessageResponse: Codable, Equatable {
+struct MessageResponse: Codable, Equatable, Identifiable {
     let id: String
     let object: String
     let createdAt: Int
