@@ -8,6 +8,7 @@ final class Workout {
     var duration: Int?
     var notes: String?
     var timestamp: Date
+    @Relationship(deleteRule: .cascade) var exercises: [Exercise]
     
     init(type: WorkoutType, duration: Int? = nil, notes: String? = nil) {
         self.id = UUID()
@@ -15,5 +16,6 @@ final class Workout {
         self.duration = duration
         self.notes = notes
         self.timestamp = Date()
+        self.exercises = []
     }
 } 

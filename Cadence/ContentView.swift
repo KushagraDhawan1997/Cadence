@@ -39,23 +39,10 @@ struct ContentView: View {
 }
 
 #Preview {
-    // Create preview-specific dependencies
-    let previewContainer = try! ModelContainer(for: Workout.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
-    let previewContext = ModelContext(previewContainer)
-    
-    // Create dependencies
-    let networkMonitor = NetworkMonitor()
-    let errorHandler = ErrorHandler()
-    let apiService = OpenAIService(
-        networkMonitor: networkMonitor,
-        errorHandler: errorHandler,
-        modelContext: previewContext
+    ContentView(
+        service: PreviewContainer.service,
+        errorHandler: PreviewContainer.errorHandler,
+        networkMonitor: PreviewContainer.networkMonitor
     )
-    
-    return ContentView(
-        service: apiService,
-        errorHandler: errorHandler,
-        networkMonitor: networkMonitor
-    )
-    .modelContainer(previewContainer)
+    .modelContainer(PreviewContainer.container)
 }

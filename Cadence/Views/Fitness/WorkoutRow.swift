@@ -8,23 +8,25 @@ struct WorkoutRow: View {
             Image(systemName: workout.type.iconName)
                 .font(.title2)
                 .frame(width: 32)
-                .foregroundStyle(.blue)
+                .foregroundStyle(.tint)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(workout.type.displayName)
                     .font(.headline)
                 
-                if let duration = workout.duration {
-                    Text("\(duration) minutes")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                Group {
+                    if !workout.exercises.isEmpty {
+                        Text("\(workout.exercises.count) exercise\(workout.exercises.count == 1 ? "" : "s")")
+                    }
+                    if let duration = workout.duration {
+                        Text("\(duration) minutes")
+                    }
+                    if let notes = workout.notes {
+                        Text(notes)
+                    }
                 }
-                
-                if let notes = workout.notes {
-                    Text(notes)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
             
             Spacer()

@@ -3,7 +3,7 @@ import SwiftData
 
 struct WorkoutHistoryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Workout.timestamp, order: .reverse) private var workouts: [Workout]
+    @Query(sort: \Workout.timestamp, order: .reverse, animation: .default) private var workouts: [Workout]
     @State private var selectedType: WorkoutType?
     @State private var isEditing = false
     @State private var showingCreateSheet = false
@@ -16,6 +16,7 @@ struct WorkoutHistoryView: View {
     }
     
     private var groupedWorkouts: [(String, [Workout])] {
+        print("Total workouts in view: \(workouts.count)")
         let grouped = Dictionary(grouping: filteredWorkouts) { workout in
             Calendar.current.startOfDay(for: workout.timestamp)
         }
@@ -58,14 +59,16 @@ struct WorkoutHistoryView: View {
                         ForEach(groupedWorkouts, id: \.0) { date, dayWorkouts in
                             Section(date) {
                                 ForEach(dayWorkouts) { workout in
-                                    WorkoutRow(workout: workout)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                deleteWorkout(workout)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
+                                    NavigationLink(value: workout) {
+                                        WorkoutRow(workout: workout)
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            deleteWorkout(workout)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
+                                    }
                                 }
                             }
                         }
@@ -75,6 +78,9 @@ struct WorkoutHistoryView: View {
                 }
             }
             .navigationTitle(selectedType == nil ? "Workout History" : "Workout History • \(selectedType!.displayName)")
+            .navigationDestination(for: Workout.self) { workout in
+                WorkoutDetailView(workout: workout)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -134,23 +140,8 @@ struct WorkoutHistoryView: View {
 }
 
 #Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Workout.self, configurations: config)
-    
-    // Add sample workouts
-    let workout1 = Workout(type: .chestTriceps, duration: 45, notes: "Great chest day!")
-    let workout2 = Workout(type: .cardio, duration: 30, notes: "Morning run")
-    let workout3 = Workout(type: .hamstringsGlutes, duration: 60, notes: "Leg day!")
-    
-    workout1.timestamp = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
-    workout2.timestamp = Calendar.current.date(byAdding: .hour, value: -3, to: Date())!
-    
-    container.mainContext.insert(workout1)
-    container.mainContext.insert(workout2)
-    container.mainContext.insert(workout3)
-    
-    return NavigationStack {
+    NavigationStack {
         WorkoutHistoryView()
     }
-    .modelContainer(container)
+    .modelContainer(PreviewContainer.container)
 } 
