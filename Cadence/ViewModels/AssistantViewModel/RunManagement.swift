@@ -43,8 +43,6 @@ extension AssistantViewModel {
     }
     
     private func executeFunction(name: String, arguments: String) async throws -> String {
-        print("Executing function: \(name) with arguments: \(arguments)")
-        
         guard let jsonData = arguments.data(using: .utf8),
               let args = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
             throw AppError.systemError("Invalid function arguments")
@@ -52,7 +50,7 @@ extension AssistantViewModel {
         
         // Handle dashboard-configured functions
         switch name {
-        case "add_test_workout":
+        case "create_workout":
             guard let argsData = try? JSONSerialization.data(withJSONObject: args),
                   let workoutArgs = try? JSONDecoder().decode(WorkoutArgs.self, from: argsData) else {
                 throw AppError.systemError("Invalid workout arguments")
@@ -62,15 +60,11 @@ extension AssistantViewModel {
             let workout = Workout(
                 type: workoutArgs.type,
                 duration: workoutArgs.duration,
-                exercises: workoutArgs.exercises,
                 notes: workoutArgs.notes
             )
             
-            // TODO: Store workout in persistence layer
-            print("📝 Workout Logged: \(workout)")
-            
-            return "Successfully logged your \(workout.type.rawValue) workout (\(workout.duration) minutes)" + 
-                   (workout.exercises != nil ? " with \(workout.exercises!.count) exercises" : "")
+            let durationText = workoutArgs.duration != nil ? " (\(workoutArgs.duration!) minutes)" : ""
+            return "Successfully logged your \(workout.type.rawValue) workout\(durationText)"
             
         default:
             throw AppError.systemError("Unknown function: \(name)")
@@ -80,8 +74,7 @@ extension AssistantViewModel {
     // Helper struct for decoding arguments
     private struct WorkoutArgs: Codable {
         let type: WorkoutType
-        let duration: Int
-        let exercises: [Exercise]?
+        let duration: Int?
         let notes: String?
     }
 } 

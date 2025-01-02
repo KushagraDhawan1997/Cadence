@@ -1,10 +1,11 @@
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
+    @State private var selectedTab = 0
+    @State private var showError = false
     @StateObject private var viewModel: AssistantViewModel
     @ObservedObject private var networkMonitor: NetworkMonitor
-    @State private var showError = false
-    @State private var showChat = false
     
     init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
         _viewModel = StateObject(wrappedValue: AssistantViewModel(service: service, errorHandler: errorHandler, networkMonitor: networkMonitor))
@@ -12,12 +13,20 @@ struct ContentView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            MainContentView(
-                viewModel: viewModel,
-                networkMonitor: networkMonitor,
-                showError: $showError
-            )
+        TabView(selection: $selectedTab) {
+            NavigationStack {
+                ThreadListView(viewModel: viewModel, showError: $showError)
+            }
+            .tabItem {
+                Label("Chat", systemImage: "bubble.left.fill")
+            }
+            .tag(0)
+            
+            WorkoutHistoryView()
+                .tabItem {
+                    Label("Workouts", systemImage: "figure.strengthtraining.traditional")
+                }
+                .tag(1)
         }
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
@@ -29,28 +38,24 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Preview Helpers
-extension ContentView {
-    static func createPreview() -> ContentView {
-        let networkMonitor = NetworkMonitor()
-        let container = DependencyContainer.shared
-        container.registerServices()
-        container.register(NetworkMonitor.self, instance: networkMonitor)
-        
-        guard let service = container.resolve(APIClient.self),
-              let errorHandler = container.resolve(ErrorHandling.self),
-              let networkMonitor = container.resolve(NetworkMonitor.self) else {
-            fatalError("Failed to initialize preview dependencies")
-        }
-        
-        return ContentView(
-            service: service,
-            errorHandler: errorHandler,
-            networkMonitor: networkMonitor
-        )
-    }
-}
-
 #Preview {
-    ContentView.createPreview()
+    // Create preview-specific dependencies
+    let previewContainer = try! ModelContainer(for: Workout.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let previewContext = ModelContext(previewContainer)
+    
+    // Create dependencies
+    let networkMonitor = NetworkMonitor()
+    let errorHandler = ErrorHandler()
+    let apiService = OpenAIService(
+        networkMonitor: networkMonitor,
+        errorHandler: errorHandler,
+        modelContext: previewContext
+    )
+    
+    return ContentView(
+        service: apiService,
+        errorHandler: errorHandler,
+        networkMonitor: networkMonitor
+    )
+    .modelContainer(previewContainer)
 }

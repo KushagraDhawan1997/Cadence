@@ -6,48 +6,62 @@
 //
 
 import Foundation
+import SwiftData
 
 // Protocol for our services to conform to
 protocol Injectable {}
 
 // Main container that will hold all our dependencies
-class DependencyContainer {
+final class DependencyContainer {
     // MARK: - Singleton instance
     static let shared = DependencyContainer()
     
     // MARK: - Private properties
+    private let lock = NSRecursiveLock()
     private var services: [String: Any] = [:]
+    private var factories: [String: (DependencyContainer) -> Any] = [:]
     
     // MARK: - Initialization
     private init() {}
     
     // MARK: - Registration
     func register<Service>(_ type: Service.Type, instance: Service) {
+        lock.lock()
+        defer { lock.unlock() }
         services[String(describing: type)] = instance
+    }
+    
+    func register<Service>(_ type: Service.Type, factory: @escaping (DependencyContainer) -> Service) {
+        lock.lock()
+        defer { lock.unlock() }
+        factories[String(describing: type)] = factory
     }
     
     // MARK: - Resolution
     func resolve<Service>(_ type: Service.Type) -> Service? {
-        return services[String(describing: type)] as? Service
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let key = String(describing: type)
+        
+        // First check if we have an instance
+        if let instance = services[key] as? Service {
+            return instance
+        }
+        
+        // Then check if we have a factory
+        if let factory = factories[key] {
+            let instance = factory(self) as! Service
+            // Cache the instance
+            services[key] = instance
+            return instance
+        }
+        
+        return nil
     }
 }
 
-// MARK: - Service Registration
-extension DependencyContainer {
-    func registerServices() {
-        // Register network monitor first
-        let networkMonitor = NetworkMonitor()
-        register(NetworkMonitor.self, instance: networkMonitor)
-        
-        // Register error handler
-        let errorHandler = ErrorHandler()
-        register(ErrorHandling.self, instance: errorHandler)
-        
-        // Register OpenAI service with its dependencies
-        let openAIService = OpenAIService(networkMonitor: networkMonitor, errorHandler: errorHandler)
-        register(APIClient.self, instance: openAIService)
-    }
-}
-
-// Make our NetworkService conform to Injectable
+// Make our services conform to Injectable
 extension OpenAIService: Injectable {}
+extension ErrorHandler: Injectable {}
+extension NetworkMonitor: Injectable {}

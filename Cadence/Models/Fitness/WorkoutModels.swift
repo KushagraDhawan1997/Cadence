@@ -1,22 +1,18 @@
 import Foundation
+import SwiftData
 
-struct Exercise: Codable {
-    let name: String
-    let sets: Int
-    let reps: Int
-}
-
-struct Workout: Codable {
-    let type: WorkoutType
-    let duration: Int
-    let exercises: [Exercise]?
-    let notes: String?
-    let timestamp: Date
+@Model
+final class Workout {
+    var id: UUID
+    var type: WorkoutType
+    var duration: Int?
+    var notes: String?
+    var timestamp: Date
     
-    init(type: WorkoutType, duration: Int, exercises: [Exercise]? = nil, notes: String? = nil) {
+    init(type: WorkoutType, duration: Int? = nil, notes: String? = nil) {
+        self.id = UUID()
         self.type = type
         self.duration = duration
-        self.exercises = exercises
         self.notes = notes
         self.timestamp = Date()
     }

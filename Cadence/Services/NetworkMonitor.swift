@@ -32,8 +32,8 @@ enum NetworkStatus: String {
 // MARK: - Network Monitor
 class NetworkMonitor: ObservableObject {
     // MARK: - Published Properties
-    @Published private(set) var status: NetworkStatus = .disconnected
-    @Published private(set) var isConnected = false
+    @Published private(set) var status: NetworkStatus = .connected  // Default to connected
+    @Published private(set) var isConnected = true  // Default to true
     
     // MARK: - Private Properties
     private let monitor = NWPathMonitor()
@@ -48,22 +48,14 @@ class NetworkMonitor: ObservableObject {
         stopMonitoring()
     }
     
-    // MARK: - Monitoring Methods
+    // MARK: - Monitoring Control
     private func startMonitoring() {
         monitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            
-            // Determine connection type
-            let status: NetworkStatus = path.status == .satisfied
-                ? (path.usesInterfaceType(.cellular) ? .cellular : .wifi)
-                : .disconnected
-            
             DispatchQueue.main.async {
-                self.status = status
-                self.isConnected = path.status == .satisfied
+                self?.isConnected = path.status == .satisfied
+                self?.status = self?.determineStatus(from: path) ?? .disconnected
             }
         }
-        
         monitor.start(queue: queue)
     }
     
@@ -71,13 +63,20 @@ class NetworkMonitor: ObservableObject {
         monitor.cancel()
     }
     
-    // MARK: - Helper Methods
-    func isNetworkAvailable() -> Bool {
-        return isConnected
-    }
-    
-    func getNetworkType() -> NetworkStatus {
-        return status
+    private func determineStatus(from path: NWPath) -> NetworkStatus {
+        if !path.usesInterfaceType(.wifi) && !path.usesInterfaceType(.cellular) {
+            return .disconnected
+        }
+        
+        if path.usesInterfaceType(.wifi) {
+            return .wifi
+        }
+        
+        if path.usesInterfaceType(.cellular) {
+            return .cellular
+        }
+        
+        return path.status == .satisfied ? .connected : .disconnected
     }
 }
 

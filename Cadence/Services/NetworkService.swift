@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // MARK: - Network Protocols
 protocol APIClient {
@@ -33,20 +34,22 @@ class OpenAIService: APIClient {
     // MARK: - Dependencies
     private let networkMonitor: NetworkMonitor
     private let errorHandler: ErrorHandling
+    private let modelContext: ModelContext
     
     // MARK: - Properties
     private let maxRetries = 3
     private let retryDelay: UInt64 = 2_000_000_000 // 2 seconds
     
     // MARK: - Initialization
-    init(networkMonitor: NetworkMonitor, errorHandler: ErrorHandling) {
+    init(networkMonitor: NetworkMonitor, errorHandler: ErrorHandling, modelContext: ModelContext) {
         self.networkMonitor = networkMonitor
         self.errorHandler = errorHandler
+        self.modelContext = modelContext
     }
     
     func streamRequest<T>(_ request: APIRequest, onReceive: @escaping @MainActor (T) -> Void) async throws where T: Decodable {
-        // Check network availability
-        guard networkMonitor.isConnected else {
+        // Only check network if explicitly disconnected
+        if case .disconnected = networkMonitor.status {
             throw AppError.network(.invalidResponse)
         }
         
@@ -74,8 +77,6 @@ class OpenAIService: APIClient {
             streamingBody["stream"] = true
             let jsonData = try JSONSerialization.data(withJSONObject: streamingBody)
             urlRequest.httpBody = jsonData
-            print("Stream Request URL: \(url)")
-            print("Stream Request Body: \(String(data: jsonData, encoding: .utf8) ?? "")")
         }
         
         let session = URLSession.shared
@@ -91,13 +92,11 @@ class OpenAIService: APIClient {
                 throw AppError.network(.invalidResponse)
             }
             
-            print("Raw stream line: \(line)")
             guard !line.isEmpty else { continue }
             
             if line.hasPrefix("data: ") {
                 let jsonString = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
                 if jsonString == "[DONE]" {
-                    print("Stream complete")
                     if isWaitingForResponse {
                         // Wait briefly for the final response
                         try await Task.sleep(nanoseconds: 1_000_000_000)  // 1 second
@@ -148,7 +147,6 @@ class OpenAIService: APIClient {
                         }
                     }
                 } catch {
-                    print("Stream decoding error: \(error)")
                     continue
                 }
             }
@@ -178,11 +176,10 @@ class OpenAIService: APIClient {
         for call in toolCalls {
             if call.type == "function" {
                 do {
-                    print(" Executing function: \(call.function.name) with args: \(call.function.arguments)")
+                    print("Function called: \(call.function.name) with arguments: \(call.function.arguments)")
                     let result = try await executeFunction(name: call.function.name, arguments: call.function.arguments)
                     outputs.append(["tool_call_id": call.id, "output": result])
                 } catch {
-                    print(" Function execution failed: \(error)")
                     throw error
                 }
             }
@@ -201,12 +198,11 @@ class OpenAIService: APIClient {
         }
         
         switch name {
-        case "add_test_workout":
+        case "create_workout":
             // Define WorkoutArgs struct in scope
             struct WorkoutArgs: Codable {
                 let type: WorkoutType
-                let duration: Int
-                let exercises: [Exercise]?
+                let duration: Int?
                 let notes: String?
             }
             
@@ -217,21 +213,32 @@ class OpenAIService: APIClient {
                                                         userInfo: [NSLocalizedDescriptionKey: "Failed to decode workout arguments"]))
             }
             
-            // Validate workout data
-            guard workoutArgs.duration > 0 else {
-                throw NetworkError.decodingFailed(NSError(domain: "", 
-                                                        code: -1, 
-                                                        userInfo: [NSLocalizedDescriptionKey: "Duration must be greater than 0"]))
+            // Create and save workout
+            @MainActor func saveWorkout() async throws -> String {
+                print("Creating workout with type: \(workoutArgs.type.displayName), duration: \(workoutArgs.duration ?? 0)")
+                
+                let workout = Workout(
+                    type: workoutArgs.type,
+                    duration: workoutArgs.duration,
+                    notes: workoutArgs.notes
+                )
+                
+                print("Inserting workout into context")
+                modelContext.insert(workout)
+                
+                do {
+                    try modelContext.save()
+                    print("Successfully saved workout to context")
+                } catch {
+                    print("Failed to save workout: \(error)")
+                    throw error
+                }
+                
+                let durationText = workoutArgs.duration != nil ? " (\(workoutArgs.duration!) minutes)" : ""
+                return "Successfully logged your \(workout.type.displayName) workout\(durationText)"
             }
             
-            guard let exercises = workoutArgs.exercises, !exercises.isEmpty else {
-                throw NetworkError.decodingFailed(NSError(domain: "", 
-                                                        code: -1, 
-                                                        userInfo: [NSLocalizedDescriptionKey: "Workout must include at least one exercise"]))
-            }
-            
-            // Return success message
-            return "Successfully logged workout"
+            return try await saveWorkout()
             
         default:
             throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown function: \(name)"]))
@@ -239,8 +246,8 @@ class OpenAIService: APIClient {
     }
     
     func sendRequest<T>(_ request: APIRequest) async throws -> T where T : Decodable {
-        // Check network availability
-        guard networkMonitor.isConnected else {
+        // Only check network if explicitly disconnected
+        if case .disconnected = networkMonitor.status {
             throw AppError.network(.invalidResponse)
         }
         
@@ -253,8 +260,8 @@ class OpenAIService: APIClient {
                 lastError = error
                 errorHandler.log(error)
                 
-                // Check if network is still available
-                guard networkMonitor.isConnected else {
+                // Only check network if explicitly disconnected
+                if case .disconnected = networkMonitor.status {
                     throw AppError.network(.invalidResponse)
                 }
                 
