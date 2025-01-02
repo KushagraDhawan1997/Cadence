@@ -5,6 +5,7 @@ struct WorkoutHistoryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Workout.timestamp, order: .reverse) private var workouts: [Workout]
     @State private var selectedType: WorkoutType?
+    @State private var isEditing = false
     
     private var filteredWorkouts: [Workout] {
         guard let selectedType else { return workouts }
@@ -14,11 +15,6 @@ struct WorkoutHistoryView: View {
     }
     
     private var groupedWorkouts: [(String, [Workout])] {
-        print("Total workouts: \(workouts.count)")
-        workouts.forEach { workout in
-            print("Workout: \(workout.type.displayName), Duration: \(workout.duration ?? 0), Time: \(workout.timestamp)")
-        }
-        
         let grouped = Dictionary(grouping: filteredWorkouts) { workout in
             Calendar.current.startOfDay(for: workout.timestamp)
         }
@@ -27,110 +23,85 @@ struct WorkoutHistoryView: View {
         }.sorted { $0.0 > $1.0 }
     }
     
+    private func deleteWorkout(_ workout: Workout) {
+        modelContext.delete(workout)
+        try? modelContext.save()
+    }
+    
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Quick Stats
-                QuickStatsView(workouts: workouts)
-                    .padding()
-                    .background(Color(.systemGroupedBackground))
-                
-                // Filter Pills
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        FilterPill(title: "All", isSelected: selectedType == nil) {
-                            selectedType = nil
+            Group {
+                if filteredWorkouts.isEmpty {
+                    ContentUnavailableView {
+                        Label {
+                            Text(selectedType == nil ? "No Workouts" : "No \(selectedType!.displayName) Workouts")
+                        } icon: {
+                            Image(systemName: selectedType?.iconName ?? "figure.run")
+                        }
+                    } description: {
+                        Text(selectedType == nil ? 
+                            "Start a chat to log your first workout" :
+                            "Try a different workout type or clear the filter")
+                    }
+                } else {
+                    List {
+                        ForEach(groupedWorkouts, id: \.0) { date, dayWorkouts in
+                            Section(date) {
+                                ForEach(dayWorkouts) { workout in
+                                    WorkoutRow(workout: workout)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button(role: .destructive) {
+                                                deleteWorkout(workout)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                    .environment(\.editMode, .constant(isEditing ? .active : .inactive))
+                }
+            }
+            .navigationTitle(selectedType == nil ? "Workout History" : "Workout History • \(selectedType!.displayName)")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(action: { selectedType = nil }) {
+                            HStack {
+                                Text("All Workouts")
+                                if selectedType == nil {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
                         }
                         
+                        Divider()
+                        
                         ForEach(WorkoutType.allCases, id: \.self) { type in
-                            FilterPill(
-                                title: type.displayName,
-                                isSelected: selectedType == type
-                            ) {
-                                selectedType = type
+                            Button(action: { selectedType = type }) {
+                                HStack {
+                                    Label(type.displayName, systemImage: type.iconName)
+                                    if selectedType == type {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
                             }
                         }
+                    } label: {
+                        Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
                 }
-                .background(Color(.systemGroupedBackground))
                 
-                List {
-                    ForEach(groupedWorkouts, id: \.0) { date, dayWorkouts in
-                        Section(date) {
-                            ForEach(dayWorkouts) { workout in
-                                WorkoutRow(workout: workout)
-                            }
+                if !filteredWorkouts.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(isEditing ? "Done" : "Edit") {
+                            isEditing.toggle()
                         }
                     }
                 }
-                .listStyle(.insetGrouped)
             }
-            .navigationTitle("Workout History")
-        }
-        .onAppear {
-            print("WorkoutHistoryView appeared")
-            print("ModelContext available: \(modelContext != nil)")
-            print("Current workouts count: \(workouts.count)")
-        }
-    }
-}
-
-struct QuickStatsView: View {
-    let workouts: [Workout]
-    
-    private var thisWeekCount: Int {
-        let startOfWeek = Calendar.current.date(from: Calendar.current.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date()))!
-        return workouts.filter { $0.timestamp >= startOfWeek }.count
-    }
-    
-    private var thisMonthCount: Int {
-        let startOfMonth = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date()))!
-        return workouts.filter { $0.timestamp >= startOfMonth }.count
-    }
-    
-    var body: some View {
-        HStack(spacing: 20) {
-            StatBox(title: "This Week", value: "\(thisWeekCount)")
-            StatBox(title: "This Month", value: "\(thisMonthCount)")
-        }
-    }
-}
-
-struct StatBox: View {
-    let title: String
-    let value: String
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title2.bold())
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground))
-        .cornerRadius(10)
-    }
-}
-
-struct FilterPill: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.subheadline)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isSelected ? .blue : Color(.secondarySystemGroupedBackground))
-                .foregroundStyle(isSelected ? .white : .primary)
-                .cornerRadius(20)
         }
     }
 }
@@ -172,8 +143,23 @@ struct WorkoutRow: View {
 }
 
 #Preview {
-    NavigationStack {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: Workout.self, configurations: config)
+    
+    // Add sample workouts
+    let workout1 = Workout(type: .upperBody, duration: 45, notes: "Great arm day!")
+    let workout2 = Workout(type: .cardio, duration: 30, notes: "Morning run")
+    let workout3 = Workout(type: .lowerBody, duration: 60, notes: "Leg day!")
+    
+    workout1.timestamp = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+    workout2.timestamp = Calendar.current.date(byAdding: .hour, value: -3, to: Date())!
+    
+    container.mainContext.insert(workout1)
+    container.mainContext.insert(workout2)
+    container.mainContext.insert(workout3)
+    
+    return NavigationStack {
         WorkoutHistoryView()
     }
-    .modelContainer(for: Workout.self, inMemory: true)
+    .modelContainer(container)
 } 
