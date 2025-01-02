@@ -29,6 +29,10 @@ struct WorkoutHistoryView: View {
         try? modelContext.save()
     }
     
+    private func workoutTypesByCategory(_ category: WorkoutCategory) -> [WorkoutType] {
+        WorkoutType.allCases.filter { $0.category == category }
+    }
+    
     var body: some View {
         NavigationStack {
             Group {
@@ -85,14 +89,20 @@ struct WorkoutHistoryView: View {
                         
                         Divider()
                         
-                        ForEach(WorkoutType.allCases, id: \.self) { type in
-                            Button(action: { selectedType = type }) {
-                                HStack {
-                                    Label(type.displayName, systemImage: type.iconName)
-                                    if selectedType == type {
-                                        Image(systemName: "checkmark")
+                        ForEach(WorkoutCategory.allCases, id: \.self) { category in
+                            Menu {
+                                ForEach(workoutTypesByCategory(category), id: \.self) { type in
+                                    Button(action: { selectedType = type }) {
+                                        HStack {
+                                            Label(type.displayName, systemImage: type.iconName)
+                                            if selectedType == type {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
                                     }
                                 }
+                            } label: {
+                                Label(category.rawValue, systemImage: category.iconName)
                             }
                         }
                     } label: {
@@ -123,50 +133,14 @@ struct WorkoutHistoryView: View {
     }
 }
 
-struct WorkoutRow: View {
-    let workout: Workout
-    
-    var body: some View {
-        HStack {
-            Image(systemName: workout.type.iconName)
-                .font(.title2)
-                .frame(width: 32)
-                .foregroundStyle(.blue)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(workout.type.displayName)
-                    .font(.headline)
-                
-                if let duration = workout.duration {
-                    Text("\(duration) minutes")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                
-                if let notes = workout.notes {
-                    Text(notes)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            Text(workout.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: Workout.self, configurations: config)
     
     // Add sample workouts
-    let workout1 = Workout(type: .upperBody, duration: 45, notes: "Great arm day!")
+    let workout1 = Workout(type: .chestTriceps, duration: 45, notes: "Great chest day!")
     let workout2 = Workout(type: .cardio, duration: 30, notes: "Morning run")
-    let workout3 = Workout(type: .lowerBody, duration: 60, notes: "Leg day!")
+    let workout3 = Workout(type: .hamstringsGlutes, duration: 60, notes: "Leg day!")
     
     workout1.timestamp = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
     workout2.timestamp = Calendar.current.date(byAdding: .hour, value: -3, to: Date())!

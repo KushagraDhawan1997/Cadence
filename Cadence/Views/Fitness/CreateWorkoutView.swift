@@ -1,11 +1,62 @@
 import SwiftUI
 import SwiftData
 
+struct WorkoutTypeRow: View {
+    let type: WorkoutType
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Label(type.displayName, systemImage: type.iconName)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+    }
+}
+
+struct WorkoutTypeSelectionView: View {
+    @Binding var selectedType: WorkoutType
+    @Environment(\.dismiss) private var dismiss
+    
+    private func workoutTypesByCategory(_ category: WorkoutCategory) -> [WorkoutType] {
+        WorkoutType.allCases.filter { $0.category == category }
+    }
+    
+    var body: some View {
+        List {
+            ForEach(WorkoutCategory.allCases, id: \.self) { category in
+                Section(category.rawValue) {
+                    ForEach(workoutTypesByCategory(category), id: \.self) { type in
+                        WorkoutTypeRow(
+                            type: type,
+                            isSelected: type == selectedType
+                        ) {
+                            selectedType = type
+                            dismiss()
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Workout Type")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 struct CreateWorkoutView: View {
     let modelContext: ModelContext
     @Environment(\.dismiss) private var dismiss
     
-    @State private var selectedType: WorkoutType = .upperBody
+    @State private var selectedType: WorkoutType = .chestTriceps
     @State private var duration: String = ""
     @State private var notes: String = ""
     
@@ -13,28 +64,7 @@ struct CreateWorkoutView: View {
         Form {
             Section {
                 NavigationLink {
-                    List {
-                        ForEach(WorkoutType.allCases, id: \.self) { type in
-                            Button {
-                                selectedType = type
-                                dismiss()
-                            } label: {
-                                HStack {
-                                    Label(type.displayName, systemImage: type.iconName)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    if type == selectedType {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.blue)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .navigationTitle("Workout Type")
-                    .navigationBarTitleDisplayMode(.inline)
+                    WorkoutTypeSelectionView(selectedType: $selectedType)
                 } label: {
                     HStack {
                         Text("Type")
@@ -45,6 +75,9 @@ struct CreateWorkoutView: View {
                 }
             } header: {
                 Text("Workout Type")
+            } footer: {
+                Text(selectedType.category.rawValue)
+                    .foregroundStyle(.secondary)
             }
             
             Section("Details") {
