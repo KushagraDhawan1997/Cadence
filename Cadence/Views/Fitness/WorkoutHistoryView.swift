@@ -6,6 +6,7 @@ struct WorkoutHistoryView: View {
     @Query(sort: \Workout.timestamp, order: .reverse) private var workouts: [Workout]
     @State private var selectedType: WorkoutType?
     @State private var isEditing = false
+    @State private var showingCreateSheet = false
     
     private var filteredWorkouts: [Workout] {
         guard let selectedType else { return workouts }
@@ -42,6 +43,11 @@ struct WorkoutHistoryView: View {
                         Text(selectedType == nil ? 
                             "Start a chat to log your first workout" :
                             "Try a different workout type or clear the filter")
+                    } actions: {
+                        Button(action: { showingCreateSheet = true }) {
+                            Label("New Workout", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 } else {
                     List {
@@ -94,12 +100,23 @@ struct WorkoutHistoryView: View {
                     }
                 }
                 
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: { showingCreateSheet = true }) {
+                        Label("New Workout", systemImage: "plus")
+                    }
+                }
+                
                 if !filteredWorkouts.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(isEditing ? "Done" : "Edit") {
                             isEditing.toggle()
                         }
                     }
+                }
+            }
+            .sheet(isPresented: $showingCreateSheet) {
+                NavigationStack {
+                    CreateWorkoutView(modelContext: modelContext)
                 }
             }
         }
