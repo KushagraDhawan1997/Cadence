@@ -7,6 +7,7 @@ class AssistantViewModel: ObservableObject {
     // MARK: - Dependencies
     internal let service: APIClient
     internal let errorHandler: ErrorHandling
+    internal let networkMonitor: NetworkMonitor
     
     // MARK: - Published Properties
     @Published var threads: [ThreadModel] = [] {
@@ -27,8 +28,9 @@ class AssistantViewModel: ObservableObject {
     internal var currentTask: Task<Void, Error>?
     
     // MARK: - Initialization
-    init(service: APIClient, errorHandler: ErrorHandling) {
+    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
         self.service = service
         self.errorHandler = errorHandler
+        self.networkMonitor = networkMonitor
     }
 }

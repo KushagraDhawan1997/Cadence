@@ -53,15 +53,35 @@ extension AssistantViewModel {
         // Handle dashboard-configured functions
         switch name {
         case "add_test_workout":
-            guard let details = args["workout_details"] as? String else {
-                throw AppError.systemError("Invalid function arguments")
+            guard let argsData = try? JSONSerialization.data(withJSONObject: args),
+                  let workoutArgs = try? JSONDecoder().decode(WorkoutArgs.self, from: argsData) else {
+                throw AppError.systemError("Invalid workout arguments")
             }
-            print("📝 Workout Details Received: \(details)")
-            // TODO: Add actual workout storage/processing here
-            return "Successfully logged workout: \(details). I'll store this in your workout history."
+            
+            // Create workout from arguments
+            let workout = Workout(
+                type: workoutArgs.type,
+                duration: workoutArgs.duration,
+                exercises: workoutArgs.exercises,
+                notes: workoutArgs.notes
+            )
+            
+            // TODO: Store workout in persistence layer
+            print("📝 Workout Logged: \(workout)")
+            
+            return "Successfully logged your \(workout.type.rawValue) workout (\(workout.duration) minutes)" + 
+                   (workout.exercises != nil ? " with \(workout.exercises!.count) exercises" : "")
             
         default:
             throw AppError.systemError("Unknown function: \(name)")
         }
+    }
+    
+    // Helper struct for decoding arguments
+    private struct WorkoutArgs: Codable {
+        let type: WorkoutType
+        let duration: Int
+        let exercises: [Exercise]?
+        let notes: String?
     }
 } 

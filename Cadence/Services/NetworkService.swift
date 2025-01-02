@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Network Protocols
 protocol APIClient {
     func sendRequest<T: Decodable>(_ request: APIRequest) async throws -> T
-    func streamRequest<T: Decodable>(_ request: APIRequest, onReceive: @escaping (T) -> Void) async throws
+    func streamRequest<T: Decodable>(_ request: APIRequest, onReceive: @escaping @MainActor (T) -> Void) async throws
 }
 
 protocol APIRequest {
@@ -44,7 +44,7 @@ class OpenAIService: APIClient {
         self.errorHandler = errorHandler
     }
     
-    func streamRequest<T>(_ request: APIRequest, onReceive: @escaping (T) -> Void) async throws where T: Decodable {
+    func streamRequest<T>(_ request: APIRequest, onReceive: @escaping @MainActor (T) -> Void) async throws where T: Decodable {
         // Check network availability
         guard networkMonitor.isConnected else {
             throw AppError.network(.invalidResponse)
@@ -129,15 +129,23 @@ class OpenAIService: APIClient {
                         if let messageData = try? decoder.decode(StreamResponse.self, from: jsonData) {
                             if let content = messageData.delta?.content?.first?.text?.value {
                                 buffer += content
-                                onReceive(buffer as! T)
+                                let currentBuffer = buffer
+                                DispatchQueue.main.async {
+                                    onReceive(currentBuffer as! T)
+                                }
                             } else if let content = messageData.data?.content?.first?.text?.value {
                                 buffer += content
-                                onReceive(buffer as! T)
+                                let currentBuffer = buffer
+                                DispatchQueue.main.async {
+                                    onReceive(currentBuffer as! T)
+                                }
                             }
                         }
                     } else {
                         let decoded = try decoder.decode(T.self, from: jsonData)
-                        onReceive(decoded)
+                        DispatchQueue.main.async {
+                            onReceive(decoded)
+                        }
                     }
                 } catch {
                     print("Stream decoding error: \(error)")
@@ -149,7 +157,7 @@ class OpenAIService: APIClient {
     
     private func retrieveAndStreamFinalResponse<T>(
         request: APIRequest,
-        onReceive: @escaping (T) -> Void
+        onReceive: @escaping @MainActor (T) -> Void
     ) async throws where T: Decodable {
         let threadId = request.path.components(separatedBy: "/")[2]
         let messagesRequest = ListMessagesRequest(threadId: threadId, limit: 1, order: "desc")
@@ -158,7 +166,9 @@ class OpenAIService: APIClient {
         if let lastMessage = response.data.first,
            let content = lastMessage.content.first?.text?.value,
            T.self == String.self {
-            onReceive(content as! T)
+            DispatchQueue.main.async {
+                onReceive(content as! T)
+            }
         }
     }
     
@@ -192,11 +202,36 @@ class OpenAIService: APIClient {
         
         switch name {
         case "add_test_workout":
-            guard let details = args["workout_details"] as? String else {
-                throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid workout details"]))
+            // Define WorkoutArgs struct in scope
+            struct WorkoutArgs: Codable {
+                let type: WorkoutType
+                let duration: Int
+                let exercises: [Exercise]?
+                let notes: String?
             }
-            print(" Workout Details Received: \(details)")
-            return "Successfully logged workout: \(details)"
+            
+            guard let argsData = try? JSONSerialization.data(withJSONObject: args),
+                  let workoutArgs = try? JSONDecoder().decode(WorkoutArgs.self, from: argsData) else {
+                throw NetworkError.decodingFailed(NSError(domain: "", 
+                                                        code: -1, 
+                                                        userInfo: [NSLocalizedDescriptionKey: "Failed to decode workout arguments"]))
+            }
+            
+            // Validate workout data
+            guard workoutArgs.duration > 0 else {
+                throw NetworkError.decodingFailed(NSError(domain: "", 
+                                                        code: -1, 
+                                                        userInfo: [NSLocalizedDescriptionKey: "Duration must be greater than 0"]))
+            }
+            
+            guard let exercises = workoutArgs.exercises, !exercises.isEmpty else {
+                throw NetworkError.decodingFailed(NSError(domain: "", 
+                                                        code: -1, 
+                                                        userInfo: [NSLocalizedDescriptionKey: "Workout must include at least one exercise"]))
+            }
+            
+            // Return success message
+            return "Successfully logged workout"
             
         default:
             throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown function: \(name)"]))
@@ -247,7 +282,7 @@ class OpenAIService: APIClient {
         
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = request.method
-        urlRequest.timeoutInterval = 30
+        urlRequest.timeoutInterval = 15 // Reduced timeout
         
         let headers = Config.API.headers.merging(request.headers) { _, new in new }
         headers.forEach { urlRequest.setValue($0.value, forHTTPHeaderField: $0.key) }
@@ -255,8 +290,6 @@ class OpenAIService: APIClient {
         if let body = request.body {
             let jsonData = try JSONSerialization.data(withJSONObject: body)
             urlRequest.httpBody = jsonData
-            print("Request URL: \(url)")
-            print("Request Body: \(String(data: jsonData, encoding: .utf8) ?? "")")
         }
         
         do {
@@ -265,9 +298,6 @@ class OpenAIService: APIClient {
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw NetworkError.invalidResponse
             }
-            
-            print("Response Status Code: \(httpResponse.statusCode)")
-            print("Response Data: \(String(data: data, encoding: .utf8) ?? "")")
             
             if !(200...299).contains(httpResponse.statusCode) {
                 throw NetworkError.invalidResponse

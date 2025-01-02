@@ -187,7 +187,9 @@ struct CreateRunRequest: APIRequest {
     var body: [String : Any]? {
         [
             "assistant_id": Config.API.assistantId,
-            "model": "gpt-4-1106-preview"
+            "model": "gpt-4o-mini",
+            "temperature": 0.7,
+            "stream": true
         ]
     }
 }
@@ -215,6 +217,26 @@ struct ListMessagesRequest: APIRequest {
     }
     
     var path: String { "/threads/\(threadId)/messages" }
+    var method: String { "GET" }
+    var headers: [String : String] { [:] }
+    var queryItems: [String : String]? {
+        ["limit": "\(limit)", "order": order]
+    }
+    var body: [String : Any]? { nil }
+}
+
+struct ListRunsRequest: APIRequest {
+    let threadId: String
+    let limit: Int
+    let order: String
+    
+    init(threadId: String, limit: Int = 100, order: String = "desc") {
+        self.threadId = threadId
+        self.limit = limit
+        self.order = order
+    }
+    
+    var path: String { "/threads/\(threadId)/runs" }
     var method: String { "GET" }
     var headers: [String : String] { [:] }
     var queryItems: [String : String]? {
@@ -313,6 +335,21 @@ struct FunctionCall: Codable {
 struct ListMessagesResponse: Codable {
     let object: String
     let data: [MessageResponse]
+    let firstId: String?
+    let lastId: String?
+    let hasMore: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case object, data
+        case firstId = "first_id"
+        case lastId = "last_id"
+        case hasMore = "has_more"
+    }
+}
+
+struct ListRunsResponse: Codable {
+    let object: String
+    let data: [RunResponse]
     let firstId: String?
     let lastId: String?
     let hasMore: Bool

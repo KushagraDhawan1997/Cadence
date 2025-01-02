@@ -4,7 +4,9 @@ struct ChatView: View {
     @ObservedObject var viewModel: AssistantViewModel
     @State private var messageText = ""
     @State private var showError = false
+    @State private var showDisconnectedAlert = false
     @FocusState private var isInputFocused: Bool
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +21,7 @@ struct ChatView: View {
                 onSend: sendMessage
             )
         }
-        .navigationTitle("Chat")
+        .navigationTitle("Thread \(viewModel.currentThread?.id.suffix(4) ?? "")")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
@@ -28,11 +30,28 @@ struct ChatView: View {
                 Text(error.localizedDescription)
             }
         }
+        .alert("No Connection", isPresented: $showDisconnectedAlert) {
+            Button("OK") {
+                dismiss()
+            }
+        } message: {
+            Text("Please check your internet connection and try again.")
+        }
         .onAppear {
             isInputFocused = true
+            
+            // Check connection on appear
+            if !viewModel.networkMonitor.isConnected {
+                showDisconnectedAlert = true
+            }
         }
         .onDisappear {
-            viewModel.cancelCurrentTask()
+            viewModel.cleanupCurrentTask()
+        }
+        .onChange(of: viewModel.networkMonitor.isConnected) { oldValue, newValue in
+            if !newValue {
+                showDisconnectedAlert = true
+            }
         }
     }
     
@@ -40,13 +59,21 @@ struct ChatView: View {
         let message = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty else { return }
         
+        guard viewModel.networkMonitor.isConnected else {
+            showDisconnectedAlert = true
+            return
+        }
+        
         messageText = ""
+        isInputFocused = false
         
         Task {
             do {
                 try await viewModel.sendMessage(message)
+                isInputFocused = true
             } catch {
                 showError = true
+                isInputFocused = true
             }
         }
     }

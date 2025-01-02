@@ -2,17 +2,21 @@ import Foundation
 
 // MARK: - Message Management
 extension AssistantViewModel {
+    @MainActor
     func sendMessage(_ content: String) async throws {
+        guard networkMonitor.isConnected else {
+            let error = AppError.network(.invalidResponse)
+            self.error = error
+            throw error
+        }
+        
         guard let threadId = currentThread?.id else {
             let error = AppError.userError("No active thread")
             self.error = error
             throw error
         }
         
-        // Cancel any existing task
-        currentTask?.cancel()
-        
-        // Immediately add the user's message to the UI
+        // Create and immediately show the user's message
         let temporaryUserMessage = MessageResponse(
             id: UUID().uuidString,
             object: "thread.message",
@@ -24,74 +28,130 @@ extension AssistantViewModel {
                 text: TextContent(value: content, annotations: nil)
             )]
         )
+        
+        // Add message to UI immediately
         messages.append(temporaryUserMessage)
         
-        isLoading = true
         isStreaming = false
         streamingResponse = ""
         error = nil
         
-        currentTask = Task {
+        var messageAddedToServer = false
+        
+        let newTask = Task { @MainActor in
             do {
-                try await errorHandler.handleWithRetry { [weak self] in
+                // Send message to server
+                let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
+                let _: MessageResponse = try await service.sendRequest(messageRequest)
+                messageAddedToServer = true
+                
+                // Create and start the run immediately
+                let runRequest = CreateRunRequest(threadId: threadId)
+                isStreaming = true
+                
+                try await service.streamRequest(runRequest) { @MainActor [weak self] (response: String) in
                     guard let self = self else { return }
-                    try Task.checkCancellation()
-                    
-                    // Send user message to API
-                    let messageRequest = CreateMessageRequest(threadId: threadId, content: content, fileIds: nil)
-                    let _: MessageResponse = try await service.sendRequest(messageRequest)
-                    
-                    try Task.checkCancellation()
-                    try await updateMessages(threadId: threadId)
-                    
-                    // Create and monitor streaming run
-                    print("Creating streaming run for message")
-                    let runRequest = CreateRunRequest(threadId: threadId)
-                    
-                    isStreaming = true
-                    try await service.streamRequest(runRequest) { [weak self] (response: String) in
-                        guard let self = self else { return }
-                        self.streamingResponse = response
-                    }
-                    
-                    try Task.checkCancellation()
-                    try await updateMessages(threadId: threadId)
-                    isStreaming = false
-                    isLoading = false
+                    self.streamingResponse = response
                 }
+                
+                // Final message update
+                try await updateMessages(threadId: threadId, force: true)
+                isStreaming = false
+                
             } catch is CancellationError {
                 print("Task was cancelled")
-                isStreaming = false
-                isLoading = false
+                cleanupState()
+                if messageAddedToServer {
+                    Task {
+                        try? await updateMessages(threadId: threadId, force: true)
+                    }
+                }
             } catch {
                 let appError = errorHandler.handle(error)
+                cleanupState()
                 self.error = appError
-                isStreaming = false
-                isLoading = false
+                if messageAddedToServer {
+                    Task {
+                        try? await updateMessages(threadId: threadId, force: true)
+                    }
+                }
                 throw appError
             }
         }
         
-        try await currentTask?.value
+        currentTask = newTask
+        
+        do {
+            try await newTask.value
+        } catch {
+            if networkMonitor.isConnected && messageAddedToServer {
+                Task {
+                    try? await updateMessages(threadId: threadId, force: true)
+                }
+            }
+            throw error
+        }
     }
     
-    func cancelCurrentTask() {
-        currentTask?.cancel()
+    @MainActor
+    private func waitForRunCompletion(threadId: String, runId: String) async throws {
+        while true {
+            let request = RetrieveRunRequest(threadId: threadId, runId: runId)
+            let run: RunResponse = try await service.sendRequest(request)
+            
+            switch run.status {
+            case "completed":
+                return
+            case "failed", "cancelled", "expired":
+                throw AppError.userError("Run failed with status: \(run.status)")
+            case "in_progress", "queued":
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+                continue
+            default:
+                throw AppError.userError("Unknown run status: \(run.status)")
+            }
+        }
+    }
+    
+    @MainActor
+    private func cleanupState() {
+        isStreaming = false
+        isLoading = false
+        streamingResponse = ""
+        isWaitingForResponse = false
+    }
+    
+    // Only cleanup if explicitly requested, not during navigation
+    func cleanupCurrentTask() {
+        // Don't cancel the task, let it complete
+        // currentTask?.cancel()
+        // currentTask = nil
     }
     
     // MARK: - Message Retrieval
-    func updateMessages(threadId: String) async throws {
+    @MainActor
+    func updateMessages(threadId: String, force: Bool = false) async throws {
+        guard networkMonitor.isConnected else {
+            throw AppError.network(.invalidResponse)
+        }
+        
         let request = ListMessagesRequest(threadId: threadId, limit: 100, order: "desc")
         let response: ListMessagesResponse = try await service.sendRequest(request)
         
-        // Create a map of existing messages by content for quick lookup
-        let existingMessageMap = Dictionary(grouping: messages) { message in
-            message.content.first?.text?.value ?? ""
+        // Sort messages by creation timestamp to ensure proper ordering
+        let sortedMessages = response.data.sorted { $0.createdAt < $1.createdAt }
+        
+        if force || messages.isEmpty {
+            messages = sortedMessages
+            return
         }
         
-        // Process new messages, preserving IDs for matching content
-        let updatedMessages = response.data.map { newMessage in
-            if let existingMessage = existingMessageMap[newMessage.content.first?.text?.value ?? ""]?.first {
+        // Create a map of existing messages by ID for quick lookup
+        let existingMessageMap = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
+        
+        // Process new messages, preserving IDs for existing messages
+        let updatedMessages = sortedMessages.map { newMessage in
+            if let existingMessage = existingMessageMap[newMessage.id] {
                 // Preserve the ID but update other properties
                 return MessageResponse(
                     id: existingMessage.id,
@@ -106,10 +166,17 @@ extension AssistantViewModel {
             }
         }
         
-        messages = updatedMessages.reversed() // Reverse to show oldest first
+        // Only update if there are changes
+        if updatedMessages != messages {
+            messages = updatedMessages
+        }
     }
     
     func retrieveMessages(threadId: String) async throws -> [MessageResponse] {
+        guard networkMonitor.isConnected else {
+            throw AppError.network(.invalidResponse)
+        }
+        
         let request = ListMessagesRequest(threadId: threadId, limit: 100, order: "desc")
         let response: ListMessagesResponse = try await service.sendRequest(request)
         return response.data.reversed() // Reverse to show oldest first

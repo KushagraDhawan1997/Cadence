@@ -36,7 +36,8 @@ extension AssistantViewModel {
             try await errorHandler.handleWithRetry { [weak self] in
                 guard let self = self else { return }
                 currentThread = thread
-                messages = try await retrieveMessages(threadId: thread.id)
+                // Force update messages when switching threads
+                try await updateMessages(threadId: thread.id, force: true)
             }
         } catch {
             let appError = errorHandler.handle(error)

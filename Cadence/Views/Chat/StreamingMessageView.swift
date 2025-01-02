@@ -13,12 +13,11 @@ struct StreamingMessageView: View {
             } else {
                 messageContent
                     .frame(maxWidth: Constants.Layout.maxMessageWidth, alignment: .leading)
-                    .padding(.leading, Constants.Layout.defaultPadding)
                 Spacer()
             }
         }
         .padding(.horizontal, Constants.Layout.defaultPadding)
-        .padding(.vertical, Constants.Layout.smallPadding)
+        .padding(.vertical, Constants.Layout.smallPadding / 2)
     }
     
     private var messageContent: some View {
@@ -30,6 +29,7 @@ struct StreamingMessageView: View {
                 .padding(.vertical, Constants.Layout.smallPadding)
                 .background(Constants.Colors.assistantMessageBubble)
                 .cornerRadius(Constants.Layout.messageCornerRadius)
+                .padding(.leading, Constants.Layout.smallPadding)
         }
         .scaleEffect(isAnimating ? 1 : 0.97)
         .opacity(isAnimating ? 1 : 0)

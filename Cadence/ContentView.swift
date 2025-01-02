@@ -7,7 +7,7 @@ struct ContentView: View {
     @State private var showChat = false
     
     init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
-        _viewModel = StateObject(wrappedValue: AssistantViewModel(service: service, errorHandler: errorHandler))
+        _viewModel = StateObject(wrappedValue: AssistantViewModel(service: service, errorHandler: errorHandler, networkMonitor: networkMonitor))
         self.networkMonitor = networkMonitor
     }
     
@@ -29,20 +29,28 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    // Initialize preview dependencies
-    let networkMonitor = NetworkMonitor()
-    let container = DependencyContainer.shared
-    container.registerServices()
-    
-    if let service = container.resolve(APIClient.self),
-       let errorHandler = container.resolve(ErrorHandling.self) {
+// MARK: - Preview Helpers
+extension ContentView {
+    static func createPreview() -> ContentView {
+        let networkMonitor = NetworkMonitor()
+        let container = DependencyContainer.shared
+        container.registerServices()
+        container.register(NetworkMonitor.self, instance: networkMonitor)
+        
+        guard let service = container.resolve(APIClient.self),
+              let errorHandler = container.resolve(ErrorHandling.self),
+              let networkMonitor = container.resolve(NetworkMonitor.self) else {
+            fatalError("Failed to initialize preview dependencies")
+        }
+        
         return ContentView(
             service: service,
             errorHandler: errorHandler,
             networkMonitor: networkMonitor
         )
-    } else {
-        return Text("Failed to initialize preview")
     }
+}
+
+#Preview {
+    ContentView.createPreview()
 }
