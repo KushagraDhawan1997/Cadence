@@ -4,36 +4,36 @@ struct WorkoutRow: View {
     let workout: Workout
     
     var body: some View {
-        HStack {
+        HStack(spacing: 16) {
+            // Icon
             Image(systemName: workout.type.iconName)
                 .font(.title2)
                 .frame(width: 32)
                 .foregroundStyle(.tint)
             
+            // Content
             VStack(alignment: .leading, spacing: 4) {
+                // Title
                 Text(workout.type.displayName)
                     .font(.headline)
                 
-                Group {
+                // Subtitle
+                HStack(spacing: 4) {
                     if !workout.exercises.isEmpty {
                         Text("\(workout.exercises.count) exercise\(workout.exercises.count == 1 ? "" : "s")")
-                    }
-                    if let duration = workout.duration {
-                        Text("\(duration) minutes")
-                    }
-                    if let notes = workout.notes {
-                        Text(notes)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
             }
             
             Spacer()
             
+            // Time
             Text(workout.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.subheadline)
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 4)
     }
 } 

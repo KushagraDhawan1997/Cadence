@@ -58,7 +58,7 @@ extension AssistantViewModel {
             
             // Create workout from arguments
             let workout = Workout(
-                type: workoutArgs.type,
+                type: workoutArgs.backingData,
                 duration: workoutArgs.duration,
                 notes: workoutArgs.notes
             )
@@ -73,7 +73,7 @@ extension AssistantViewModel {
     
     // Helper struct for decoding arguments
     private struct WorkoutArgs: Codable {
-        let type: WorkoutType
+        let backingData: WorkoutType
         let duration: Int?
         let notes: String?
     }

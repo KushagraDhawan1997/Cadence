@@ -16,7 +16,6 @@ struct WorkoutHistoryView: View {
     }
     
     private var groupedWorkouts: [(String, [Workout])] {
-        print("Total workouts in view: \(workouts.count)")
         let grouped = Dictionary(grouping: filteredWorkouts) { workout in
             Calendar.current.startOfDay(for: workout.timestamp)
         }
@@ -26,8 +25,12 @@ struct WorkoutHistoryView: View {
     }
     
     private func deleteWorkout(_ workout: Workout) {
-        modelContext.delete(workout)
-        try? modelContext.save()
+        let impact = UIImpactFeedbackGenerator(style: .rigid)
+        impact.impactOccurred()
+        withAnimation {
+            modelContext.delete(workout)
+            try? modelContext.save()
+        }
     }
     
     private func workoutTypesByCategory(_ category: WorkoutCategory) -> [WorkoutType] {
@@ -62,12 +65,10 @@ struct WorkoutHistoryView: View {
                                     NavigationLink(value: workout) {
                                         WorkoutRow(workout: workout)
                                     }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            deleteWorkout(workout)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
+                                }
+                                .onDelete { indexSet in
+                                    for index in indexSet {
+                                        deleteWorkout(dayWorkouts[index])
                                     }
                                 }
                             }
@@ -125,7 +126,9 @@ struct WorkoutHistoryView: View {
                 if !filteredWorkouts.isEmpty {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(isEditing ? "Done" : "Edit") {
-                            isEditing.toggle()
+                            withAnimation {
+                                isEditing.toggle()
+                            }
                         }
                     }
                 }

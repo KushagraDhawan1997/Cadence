@@ -6,117 +6,134 @@ struct WorkoutDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showingAddExercise = false
     @State private var isEditing = false
+    @State private var showingDeleteAlert = false
     
     private func deleteExercise(_ exercise: Exercise) {
-        modelContext.delete(exercise)
+        let impact = UIImpactFeedbackGenerator(style: .rigid)
+        impact.impactOccurred()
+        withAnimation(.spring(response: 0.3)) {
+            modelContext.delete(exercise)
+            try? modelContext.save()
+        }
+    }
+    
+    private func deleteWorkout() {
+        let impact = UIImpactFeedbackGenerator(style: .rigid)
+        impact.impactOccurred()
+        modelContext.delete(workout)
         try? modelContext.save()
     }
     
     var body: some View {
         List {
-            // Empty section for spacing
-            Section { }
-            
-            // Workout Info Section
+            // Details Section
             Section {
-                // Timestamp
-                LabeledContent {
-                    Text(workout.timestamp.formatted(date: .abbreviated, time: .shortened))
-                        .foregroundStyle(.secondary)
-                } label: {
-                    Text("Time")
-                        .foregroundStyle(.secondary)
+                // Workout Type
+                HStack {
+                    Image(systemName: workout.type.iconName)
+                        .font(.title3)
+                        .foregroundStyle(.tint)
+                        .frame(width: 24)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(workout.type.displayName)
+                            .font(.headline)
+                        
+                        Text(workout.type.category.rawValue)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 
-                // Duration
                 if let duration = workout.duration {
-                    LabeledContent {
-                        Text("\(duration) minutes")
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Text("Duration")
-                            .foregroundStyle(.secondary)
-                    }
+                    Label("\(duration) minutes", systemImage: "clock")
                 }
                 
-                // Notes
                 if let notes = workout.notes {
-                    LabeledContent {
-                        Text(notes)
-                            .foregroundStyle(.secondary)
-                    } label: {
-                        Text("Notes")
-                            .foregroundStyle(.secondary)
-                    }
+                    Label(notes, systemImage: "note.text")
                 }
+            } header: {
+                Text("DETAILS")
+                    .fontWeight(.medium)
             }
             
             // Exercises Section
             Section {
                 if workout.exercises.isEmpty {
-                    ContentUnavailableView {
-                        Label {
-                            Text("No Exercises")
-                        } icon: {
-                            Image(systemName: "dumbbell")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
+                    Button(action: { showingAddExercise = true }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .imageScale(.medium)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.blue)
+                            Text("Add Exercise")
+                                .fontWeight(.medium)
                         }
-                    } description: {
-                        Text("Add your first exercise to this workout")
-                    } actions: {
-                        Button(action: { showingAddExercise = true }) {
-                            HStack {
-                                Image(systemName: "plus.circle.fill")
-                                    .imageScale(.medium)
-                                Text("Add Exercise")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
-                    .padding()
+                    .buttonStyle(.plain)
                 } else {
                     ForEach(workout.exercises) { exercise in
                         ExerciseRow(exercise: exercise)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    withAnimation {
-                                        deleteExercise(exercise)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
                     }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            deleteExercise(workout.exercises[index])
+                        }
+                    }
+                    
+                    Button(action: { showingAddExercise = true }) {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .imageScale(.medium)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.blue)
+                            Text("Add Exercise")
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             } header: {
-                if !workout.exercises.isEmpty {
-                    Text("Exercises")
-                }
+                Text("EXERCISES (\(workout.exercises.count))")
+                    .fontWeight(.medium)
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(workout.type.displayName)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { showingAddExercise = true }) {
-                    Label("Add Exercise", systemImage: "plus")
-                }
-            }
-            
-            if !workout.exercises.isEmpty {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(isEditing ? "Done" : "Edit") {
-                        withAnimation {
-                            isEditing.toggle()
+                Menu {
+                    if !workout.exercises.isEmpty {
+                        Button(action: { isEditing.toggle() }) {
+                            Label(isEditing ? "Done" : "Edit Exercises", 
+                                  systemImage: isEditing ? "checkmark" : "pencil")
                         }
                     }
+                    
+                    Button(role: .destructive, action: { showingDeleteAlert = true }) {
+                        Label("Delete Workout", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showingAddExercise) {
-            AddExerciseView(workout: workout)
+            NavigationStack {
+                AddExerciseView(workout: workout)
+            }
+        }
+        .alert("Delete Workout", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteWorkout()
+            }
+        } message: {
+            Text("Are you sure you want to delete this workout? This action cannot be undone.")
         }
         .environment(\.editMode, .constant(isEditing ? .active : .inactive))
     }
@@ -128,80 +145,73 @@ struct ExerciseRow: View {
     
     var body: some View {
         Button {
+            let impact = UIImpactFeedbackGenerator(style: .soft)
+            impact.impactOccurred()
             showingEditSheet = true
         } label: {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 // Exercise Header
                 HStack(spacing: 12) {
                     Image(systemName: exercise.equipmentType.iconName)
                         .font(.title3)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tint)
                         .frame(width: 24)
                     
                     Text(exercise.name)
                         .font(.headline)
-                    
-                    Spacer()
-                    
-                    Text(exercise.equipmentType.displayName)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
                 
-                // Sets
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(exercise.sets) { set in
-                        HStack {
-                            Text("Set \(exercise.sets.firstIndex(of: set)! + 1)")
-                                .font(.subheadline)
+                // Sets Summary
+                if !exercise.sets.isEmpty {
+                    HStack(spacing: 4) {
+                        Label("\(exercise.sets.count) sets", systemImage: "number")
+                            .foregroundStyle(.secondary)
+                        
+                        Text("•")
+                            .foregroundStyle(.secondary)
+                        
+                        Label("\(exercise.sets[0].reps) reps", systemImage: "repeat")
+                            .foregroundStyle(.secondary)
+                        
+                        if let weightStr = formatWeight(for: exercise.sets[0]) {
+                            Text("•")
                                 .foregroundStyle(.secondary)
-                                .frame(width: 48, alignment: .leading)
                             
-                            Spacer()
-                            
-                            if let weight = set.weightValue {
-                                Group {
-                                    switch set.weightType {
-                                    case .perSide:
-                                        if let barWeight = set.barWeight {
-                                            Text("\(Int(weight))kg/side • \(Int(weight * 2 + barWeight))kg total")
-                                        } else {
-                                            Text("\(Int(weight))kg/side")
-                                        }
-                                    case .total:
-                                        Text("\(Int(weight))kg")
-                                    case .perDumbbell:
-                                        Text("\(Int(weight))kg × 2")
-                                    case .bodyweight:
-                                        if weight > 0 {
-                                            Text("+\(Int(weight))kg")
-                                        }
-                                    }
-                                }
-                                .foregroundStyle(.primary)
-                                
-                                Text("×")
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4)
-                                
-                                Text("\(set.reps)")
-                                    .foregroundStyle(.primary)
-                                    .contentTransition(.numericText())
-                                
-                                Text("reps")
-                                    .foregroundStyle(.secondary)
-                            }
+                            Label(weightStr, systemImage: "scalemass")
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.subheadline)
                     }
+                    .font(.subheadline)
+                    .symbolRenderingMode(.hierarchical)
                 }
-                .padding(.leading, 36)
             }
             .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showingEditSheet) {
-            EditExerciseView(exercise: exercise)
+            NavigationStack {
+                EditExerciseView(exercise: exercise)
+            }
+        }
+    }
+    
+    private func formatWeight(for set: ExerciseSet) -> String? {
+        guard let weight = set.weightValue else { return nil }
+        
+        switch set.weightType {
+        case .perSide:
+            if let barWeight = set.barWeight {
+                return "\(Int(weight * 2 + barWeight))kg"
+            } else {
+                return "\(Int(weight))kg/side"
+            }
+        case .total:
+            return "\(Int(weight))kg"
+        case .perDumbbell:
+            return "\(Int(weight))kg × 2"
+        case .bodyweight:
+            return weight > 0 ? "+\(Int(weight))kg" : nil
         }
     }
 }

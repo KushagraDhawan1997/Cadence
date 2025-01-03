@@ -201,7 +201,7 @@ class OpenAIService: APIClient {
         case "create_workout":
             // Define WorkoutArgs struct in scope
             struct WorkoutArgs: Codable {
-                let type: WorkoutType
+                let backingData: WorkoutType
                 let duration: Int?
                 let notes: String?
             }
@@ -215,10 +215,10 @@ class OpenAIService: APIClient {
             
             // Create and save workout
             @MainActor func saveWorkout() async throws -> String {
-                print("Creating workout with type: \(workoutArgs.type.displayName), duration: \(workoutArgs.duration ?? 0)")
+                print("Creating workout with type: \(workoutArgs.backingData.displayName), duration: \(workoutArgs.duration ?? 0)")
                 
                 let workout = Workout(
-                    type: workoutArgs.type,
+                    type: workoutArgs.backingData,
                     duration: workoutArgs.duration,
                     notes: workoutArgs.notes
                 )
