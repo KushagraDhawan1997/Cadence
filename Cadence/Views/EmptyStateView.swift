@@ -6,12 +6,12 @@ struct EmptyStateView: View {
     
     var body: some View {
         ContentUnavailableView {
-            Label("No Threads", systemImage: "bubble.left.and.bubble.right")
+            Label("No Workouts", systemImage: "dumbbell.fill")
         } description: {
-            Text("Create a new thread to start chatting")
+            Text("Create a new workout to start training")
         } actions: {
             Button(action: createThread) {
-                Label("New Thread", systemImage: "plus")
+                Label("New Workout", systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isLoading)

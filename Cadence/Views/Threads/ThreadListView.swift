@@ -18,10 +18,10 @@ struct ThreadListView: View {
                 )
             }
         }
-        .navigationTitle("Threads")
+        .navigationTitle("Workouts")
         .toolbar {
             Button(action: createThread) {
-                Label("New Thread", systemImage: "plus")
+                Label("New Workout", systemImage: "plus")
                     .font(.headline)
             }
             .disabled(viewModel.isLoading)
