@@ -39,6 +39,7 @@ class OpenAIService: APIClient {
     // MARK: - Properties
     private let maxRetries = 3
     private let retryDelay: UInt64 = 2_000_000_000 // 2 seconds
+    private var currentWorkoutId: UUID?
     
     // MARK: - Initialization
     init(networkMonitor: NetworkMonitor, errorHandler: ErrorHandling, modelContext: ModelContext) {
@@ -192,6 +193,9 @@ class OpenAIService: APIClient {
     }
     
     private func executeFunction(name: String, arguments: String) async throws -> String {
+        print("🔵 Function called: \(name)")
+        print("🔵 Arguments: \(arguments)")
+        
         guard let jsonData = arguments.data(using: .utf8),
               let args = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
             throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid function arguments"]))
@@ -201,7 +205,7 @@ class OpenAIService: APIClient {
         case "create_workout":
             // Define WorkoutArgs struct in scope
             struct WorkoutArgs: Codable {
-                let backingData: WorkoutType
+                let type: String
                 let duration: Int?
                 let notes: String?
             }
@@ -215,32 +219,76 @@ class OpenAIService: APIClient {
             
             // Create and save workout
             @MainActor func saveWorkout() async throws -> String {
-                print("Creating workout with type: \(workoutArgs.backingData.displayName), duration: \(workoutArgs.duration ?? 0)")
+                print("🏋️ Creating workout with type: \(workoutArgs.type), duration: \(workoutArgs.duration ?? 0)")
                 
-                let workout = Workout(
-                    type: workoutArgs.backingData,
+                let workoutService = WorkoutService(modelContext: modelContext)
+                let workoutId = try workoutService.createWorkout(
+                    type: workoutArgs.type,
                     duration: workoutArgs.duration,
                     notes: workoutArgs.notes
                 )
                 
-                print("Inserting workout into context")
-                modelContext.insert(workout)
-                
-                do {
-                    try modelContext.save()
-                    print("Successfully saved workout to context")
-                } catch {
-                    print("Failed to save workout: \(error)")
-                    throw error
-                }
+                // Store workout ID for subsequent exercise additions
+                currentWorkoutId = workoutId
+                print("✅ Workout created with ID: \(workoutId)")
                 
                 let durationText = workoutArgs.duration != nil ? " (\(workoutArgs.duration!) minutes)" : ""
-                return "Successfully logged your \(workout.type.displayName) workout\(durationText)"
+                return "Successfully logged your \(workoutArgs.type) workout\(durationText). What exercises did you do?"
             }
             
             return try await saveWorkout()
             
+        case "add_exercise":
+            guard let currentWorkoutId = currentWorkoutId else {
+                print("❌ No active workout found")
+                throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No active workout"]))
+            }
+            
+            struct ExerciseArgs: Codable {
+                let name: String
+                let equipment_type: String
+                let sets: [SetArgs]
+            }
+            
+            struct SetArgs: Codable {
+                let reps: Int
+                let weight_type: String
+                let weight_value: Double?
+                let bar_weight: Double?
+            }
+            
+            guard let argsData = try? JSONSerialization.data(withJSONObject: args),
+                  let exerciseArgs = try? JSONDecoder().decode(ExerciseArgs.self, from: argsData) else {
+                print("❌ Failed to decode exercise arguments")
+                throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode exercise arguments"]))
+            }
+            
+            @MainActor func saveExercise() async throws -> String {
+                print("💪 Adding exercise: \(exerciseArgs.name) to workout: \(currentWorkoutId)")
+                
+                let workoutService = WorkoutService(modelContext: modelContext)
+                let exercise = try workoutService.addExercise(
+                    workoutId: currentWorkoutId,
+                    name: exerciseArgs.name,
+                    equipmentType: EquipmentType(rawValue: exerciseArgs.equipment_type)!,
+                    sets: exerciseArgs.sets.map { set in
+                        [
+                            "reps": set.reps,
+                            "weight_type": set.weight_type,
+                            "weight_value": set.weight_value as Any,
+                            "bar_weight": set.bar_weight as Any
+                        ]
+                    }
+                )
+                
+                print("✅ Exercise added with \(exercise.sets.count) sets")
+                return "Added \(exerciseArgs.name) with \(exercise.sets.count) sets! What else did you do?"
+            }
+            
+            return try await saveExercise()
+            
         default:
+            print("❌ Unknown function: \(name)")
             throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unknown function: \(name)"]))
         }
     }

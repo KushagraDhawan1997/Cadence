@@ -65,3 +65,4 @@ final class DependencyContainer {
 extension OpenAIService: Injectable {}
 extension ErrorHandler: Injectable {}
 extension NetworkMonitor: Injectable {}
+extension WorkoutService: Injectable {}
