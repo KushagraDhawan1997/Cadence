@@ -50,31 +50,9 @@ extension AssistantViewModel {
         
         // Handle dashboard-configured functions
         switch name {
-        case "create_workout":
-            guard let argsData = try? JSONSerialization.data(withJSONObject: args),
-                  let workoutArgs = try? JSONDecoder().decode(WorkoutArgs.self, from: argsData) else {
-                throw AppError.systemError("Invalid workout arguments")
-            }
-            
-            // Create workout from arguments
-            let workout = Workout(
-                type: workoutArgs.backingData,
-                duration: workoutArgs.duration,
-                notes: workoutArgs.notes
-            )
-            
-            let durationText = workoutArgs.duration != nil ? " (\(workoutArgs.duration!) minutes)" : ""
-            return "Successfully logged your \(workout.type.rawValue) workout\(durationText)"
-            
         default:
-            throw AppError.systemError("Unknown function: \(name)")
+            // Forward all function calls to NetworkService
+            return try await service.executeFunction(name: name, arguments: arguments)
         }
-    }
-    
-    // Helper struct for decoding arguments
-    private struct WorkoutArgs: Codable {
-        let backingData: WorkoutType
-        let duration: Int?
-        let notes: String?
     }
 } 

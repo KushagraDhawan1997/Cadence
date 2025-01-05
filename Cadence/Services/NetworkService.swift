@@ -5,6 +5,7 @@ import SwiftData
 protocol APIClient {
     func sendRequest<T: Decodable>(_ request: APIRequest) async throws -> T
     func streamRequest<T: Decodable>(_ request: APIRequest, onReceive: @escaping @MainActor (T) -> Void) async throws
+    func executeFunction(name: String, arguments: String) async throws -> String
 }
 
 protocol APIRequest {
@@ -192,7 +193,7 @@ class OpenAIService: APIClient {
         }
     }
     
-    private func executeFunction(name: String, arguments: String) async throws -> String {
+    func executeFunction(name: String, arguments: String) async throws -> String {
         print("🔵 Function called: \(name)")
         print("🔵 Arguments: \(arguments)")
         
@@ -202,6 +203,38 @@ class OpenAIService: APIClient {
         }
         
         switch name {
+        case "validate_exercise":
+            struct ValidateArgs: Codable {
+                let name: String
+            }
+            
+            guard let argsData = try? JSONSerialization.data(withJSONObject: args),
+                  let validateArgs = try? JSONDecoder().decode(ValidateArgs.self, from: argsData) else {
+                throw NetworkError.decodingFailed(NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode validate arguments"]))
+            }
+            
+            // Check against library
+            if let exercise = ExerciseLibrary.findExercise(named: validateArgs.name) {
+                let response = ValidateExerciseResponse(
+                    matched: true,
+                    standardizedName: exercise.primaryName,
+                    category: exercise.category.rawValue,
+                    isCompound: exercise.isCompound,
+                    suggestions: nil
+                )
+                return try JSONEncoder().encode(response).toString()
+            }
+            
+            // No exact match, return unmatched but valid
+            let response = ValidateExerciseResponse(
+                matched: false,
+                standardizedName: validateArgs.name, // Use original name
+                category: nil,
+                isCompound: nil,
+                suggestions: nil
+            )
+            return try JSONEncoder().encode(response).toString()
+            
         case "create_workout":
             // Define WorkoutArgs struct in scope
             struct WorkoutArgs: Codable {
@@ -388,4 +421,19 @@ struct StreamData: Codable {
 struct StreamDelta: Codable {
     let role: String?
     let content: [MessageContent]?
+}
+
+struct ValidateExerciseResponse: Codable {
+    let matched: Bool
+    let standardizedName: String?
+    let category: String?
+    let isCompound: Bool?
+    let suggestions: [String]?
+}
+
+// Helper extension
+extension Data {
+    func toString() -> String {
+        String(data: self, encoding: .utf8) ?? ""
+    }
 }
