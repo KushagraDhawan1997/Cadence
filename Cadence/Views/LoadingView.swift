@@ -29,7 +29,6 @@ struct LoadingView: View {
 
 #Preview {
     VStack(spacing: 20) {
-        LoadingView()
         LoadingView("Loading messages...")
     }
 }

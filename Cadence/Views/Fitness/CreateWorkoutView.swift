@@ -9,7 +9,7 @@ struct WorkoutTypeRow: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                Label(type.displayName, systemImage: type.iconName)
+                Text(type.displayName)
                     .foregroundStyle(.primary)
                 
                 Spacer()
@@ -69,7 +69,7 @@ struct CreateWorkoutView: View {
                     HStack {
                         Text("Type")
                         Spacer()
-                        Label(selectedType.displayName, systemImage: selectedType.iconName)
+                        Text(selectedType.displayName)
                             .foregroundStyle(.secondary)
                     }
                 }

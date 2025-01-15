@@ -6,6 +6,11 @@ struct ExerciseFormView: View {
     @Binding var sets: [AddExerciseView.SetInput]
     @FocusState private var focusedField: Field?
     
+    // Add state for suggestions
+    @State private var suggestions: [ExerciseLibrary.Exercise] = []
+    @State private var showSuggestions = false
+    @State private var isValidExercise = false
+    
     let saveTitle: String
     let onSave: () -> Void
     let onCancel: () -> Void
@@ -15,8 +20,7 @@ struct ExerciseFormView: View {
     }
     
     private func addSet() {
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
+        Design.Haptics.light()
         
         if let lastSet = sets.last {
             withAnimation(.spring(response: 0.3)) {
@@ -30,6 +34,31 @@ struct ExerciseFormView: View {
         }
     }
     
+    private func updateSuggestions() {
+        guard !name.isEmpty else {
+            suggestions = []
+            showSuggestions = false
+            return
+        }
+        
+        // Filter exercises that match the input
+        suggestions = ExerciseLibrary.exercises.filter { exercise in
+            exercise.primaryName.lowercased().contains(name.lowercased()) ||
+            exercise.variations.contains { $0.lowercased().contains(name.lowercased()) }
+        }
+        showSuggestions = !suggestions.isEmpty
+        
+        // Check if current name exactly matches any exercise
+        isValidExercise = ExerciseLibrary.findExercise(named: name) != nil
+    }
+    
+    private func selectExercise(_ exercise: ExerciseLibrary.Exercise) {
+        name = exercise.primaryName
+        showSuggestions = false
+        isValidExercise = true
+        Design.Haptics.light()
+    }
+    
     var body: some View {
         NavigationStack {
             List {
@@ -39,27 +68,56 @@ struct ExerciseFormView: View {
                     TextField("Exercise Name", text: $name)
                         .textInputAutocapitalization(.words)
                         .focused($focusedField, equals: .name)
+                        .onChange(of: name) { updateSuggestions() }
                         .overlay(alignment: .trailing) {
                             if !name.isEmpty {
-                                Button(action: { name = "" }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
+                                HStack {
+                                    if isValidExercise {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                    Button(action: { 
+                                        name = "" 
+                                        updateSuggestions()
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
                                 }
-                                .buttonStyle(.borderless)
                                 .padding(.trailing, 4)
                             }
                         }
                     
+                    if showSuggestions {
+                        ForEach(suggestions, id: \.primaryName) { exercise in
+                            Button(action: { selectExercise(exercise) }) {
+                                VStack(alignment: .leading, spacing: Design.Spacing.xxs) {
+                                    Text(exercise.primaryName)
+                                        .font(Design.Typography.body())
+                                    
+                                    HStack(spacing: Design.Spacing.xs) {
+                                        Text(exercise.category.rawValue)
+                                            .font(Design.Typography.caption())
+                                            .foregroundStyle(Design.Colors.secondary)
+                                        
+                                        if exercise.isCompound {
+                                            Text("Compound")
+                                                .font(Design.Typography.caption())
+                                                .foregroundStyle(Design.Colors.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    
                     // Equipment Type
                     Picker("Equipment", selection: $equipmentType) {
                         ForEach(EquipmentType.allCases, id: \.self) { type in
-                            Label {
-                                Text(type.displayName)
-                            } icon: {
-                                Image(systemName: type.iconName)
-                                    .foregroundStyle(.tint)
-                            }
-                            .tag(type)
+                            Text(type.displayName)
+                                .tag(type)
                         }
                     }
                     .pickerStyle(.menu)

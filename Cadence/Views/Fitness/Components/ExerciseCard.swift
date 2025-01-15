@@ -10,22 +10,84 @@ struct ExerciseCard: View {
             onTap()
             showingEditSheet = true
         } label: {
-            VStack(alignment: .leading, spacing: Design.Spacing.lg) {
-                ExerciseHeader(name: exercise.name, equipmentType: exercise.equipmentType)
+            VStack(alignment: .leading, spacing: Design.Spacing.md) {
+                // Exercise Header
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(exercise.name)
+                        .font(.headline)
+                    
+                    Text(exercise.equipmentType.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 
                 if !exercise.sets.isEmpty {
-                    SetGrid(sets: exercise.sets)
+                    Divider()
+                        .padding(.vertical, 2)
+                    
+                    // Sets
+                    VStack(spacing: 0) {
+                        ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
+                            if index > 0 {
+                                Divider()
+                            }
+                            
+                            HStack {
+                                Text("Set \(index + 1)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                
+                                Spacer()
+                                
+                                Text("\(set.reps) reps")
+                                    .font(.subheadline)
+                                    .monospacedDigit()
+                                
+                                if let weightStr = formatWeight(for: set) {
+                                    Text("·")
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+                                    
+                                    Text(weightStr)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Design.Spacing.lg)
-            .glassBackground()
         }
         .buttonStyle(.plain)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .sheet(isPresented: $showingEditSheet) {
             NavigationStack {
                 EditExerciseView(exercise: exercise)
             }
+            .presentationDragIndicator(.visible)
+        }
+    }
+    
+    private func formatWeight(for set: ExerciseSet) -> String? {
+        guard let weight = set.weightValue else { return nil }
+        
+        switch set.weightType {
+        case .perSide:
+            if let barWeight = set.barWeight {
+                return "\(Int(weight * 2 + barWeight))kg"
+            } else {
+                return "\(Int(weight))kg/side"
+            }
+        case .total:
+            return "\(Int(weight))kg"
+        case .perDumbbell:
+            return "\(Int(weight))kg × 2"
+        case .bodyweight:
+            return weight > 0 ? "+\(Int(weight))kg" : nil
         }
     }
 }
@@ -40,6 +102,6 @@ struct ExerciseCard: View {
     
     return ExerciseCard(exercise: exercise) {}
         .padding()
-        .background(Design.Colors.groupedBackground)
-        .modelContainer(for: [Exercise.self, ExerciseSet.self])
+        .background(Color(.systemGroupedBackground))
 } 
+

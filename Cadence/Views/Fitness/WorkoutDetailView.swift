@@ -24,156 +24,117 @@ struct WorkoutDetailView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: Design.Spacing.xl) {
-                // Header Card
-                VStack(alignment: .leading, spacing: Design.Spacing.lg) {
-                    // Type & Category
-                    HStack(alignment: .top) {
-                        Image(systemName: workout.type.iconName)
-                            .font(Design.Typography.title())
+        List {
+            // Info Section
+            Section {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(workout.type.displayName)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text(workout.type.category.rawValue)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 12)
+                
+                // Metrics
+                HStack {
+                    // Exercise Count
+                    VStack {
+                        Text("\(workout.exercises.count)")
+                            .font(.title2)
+                            .fontWeight(.bold)
                             .foregroundStyle(Design.Colors.primary)
-                            .frame(width: 56, height: 56)
-                            .background(Design.Colors.primary.opacity(0.1))
-                            .clipShape(Circle())
-                        
-                        VStack(alignment: .leading, spacing: Design.Spacing.xxs) {
-                            Text(workout.type.displayName)
-                                .font(Design.Typography.title2())
-                            
-                            Text(workout.type.category.rawValue)
-                                .font(Design.Typography.subheadline())
-                                .foregroundStyle(Design.Colors.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Text(workout.timestamp.formatted(date: .abbreviated, time: .shortened))
-                            .font(Design.Typography.subheadline())
-                            .foregroundStyle(Design.Colors.secondary)
+                        Text("Exercises")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity)
                     
-                    // Metrics
-                    HStack(spacing: Design.Spacing.md) {
-                        // Exercise Count
-                        VStack(spacing: Design.Spacing.xxs) {
-                            Image(systemName: "dumbbell.fill")
-                                .font(Design.Typography.title2())
-                                .foregroundStyle(Design.Colors.primary)
-                            
-                            Text("\(workout.exercises.count)")
-                                .font(Design.Typography.title())
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Design.Colors.primary)
-                                .monospacedDigit()
-                            
-                            Text("EXERCISES")
-                                .font(Design.Typography.caption())
-                                .foregroundStyle(Design.Colors.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        
-                        // Total Sets
-                        VStack(spacing: Design.Spacing.xxs) {
-                            Image(systemName: "number")
-                                .font(Design.Typography.title2())
-                                .foregroundStyle(Design.Colors.primary)
-                            
-                            Text("\(workout.exercises.reduce(0) { $0 + $1.sets.count })")
-                                .font(Design.Typography.title())
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Design.Colors.primary)
-                                .monospacedDigit()
-                            
-                            Text("TOTAL SETS")
-                                .font(Design.Typography.caption())
-                                .foregroundStyle(Design.Colors.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        
+                    // Total Sets
+                    VStack {
+                        Text("\(workout.exercises.reduce(0) { $0 + $1.sets.count })")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(Design.Colors.primary)
+                        Text("Total Sets")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    if let duration = workout.duration {
                         // Duration
-                        if let duration = workout.duration {
-                            VStack(spacing: Design.Spacing.xxs) {
-                                Image(systemName: "clock.fill")
-                                    .font(Design.Typography.title2())
-                                    .foregroundStyle(Design.Colors.primary)
-                                
-                                Text("\(duration)")
-                                    .font(Design.Typography.title())
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(Design.Colors.primary)
-                                    .monospacedDigit()
-                                
-                                Text("DURATION")
-                                    .font(Design.Typography.caption())
-                                    .foregroundStyle(Design.Colors.secondary)
-                            }
-                            .frame(maxWidth: .infinity)
+                        VStack {
+                            Text("\(duration)m")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(Design.Colors.primary)
+                            Text("Duration")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                    }
-                    .symbolRenderingMode(.hierarchical)
-                    
-                    if let notes = workout.notes {
-                        Text(notes)
-                            .font(Design.Typography.callout())
-                            .foregroundStyle(Design.Colors.secondary)
+                        .frame(maxWidth: .infinity)
                     }
                 }
-                .padding(Design.Spacing.lg)
-                .glassBackground()
-                
-                // Exercises Section
-                VStack(alignment: .leading, spacing: Design.Spacing.lg) {
-                    // Section Header
-                    HStack {
-                        Text("Exercises")
-                            .font(Design.Typography.title3())
-                        
-                        Spacer()
-                        
-                        Button(action: { 
-                            Design.Haptics.light()
-                            showingAddExercise = true 
-                        }) {
-                            Label("Add Exercise", systemImage: "plus")
-                                .font(Design.Typography.body())
-                                .foregroundStyle(Design.Colors.primary)
-                        }
+                .padding(.top, 12)
+            } footer: {
+                Text(workout.timestamp.formatted(date: .abbreviated, time: .shortened))
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Exercises Section
+            Section {
+                if workout.exercises.isEmpty {
+                    ContentUnavailableView {
+                        Text("No Exercises")
+                            .font(.title3)
+                    } description: {
+                        Text("Add exercises to your workout")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, Design.Spacing.lg)
-                    
-                    if workout.exercises.isEmpty {
-                        // Empty State
-                        VStack(spacing: Design.Spacing.md) {
-                            Text("No exercises yet")
-                                .font(Design.Typography.headline())
-                                .foregroundStyle(Design.Colors.secondary)
+                    .listRowInsets(EdgeInsets(top: 48, leading: 16, bottom: 48, trailing: 16))
+                } else {
+                    ForEach(workout.exercises) { exercise in
+                        ExerciseCard(exercise: exercise) {
+                            Design.Haptics.light()
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(Design.Spacing.lg)
-                    } else {
-                        // Exercise List
-                        LazyVStack(spacing: Design.Spacing.md) {
-                            ForEach(workout.exercises) { exercise in
-                                ExerciseCard(exercise: exercise) {
-                                    Design.Haptics.light()
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        deleteExercise(exercise)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                deleteExercise(exercise)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
                         }
-                        .padding(.horizontal, Design.Spacing.lg)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Exercises")
+                        .textCase(.uppercase)
+                        .font(.footnote)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        Design.Haptics.light()
+                        showingAddExercise = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .imageScale(.large)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(Design.Colors.primary)
                     }
                 }
             }
-            .padding(.vertical, Design.Spacing.lg)
         }
-        .background(Design.Colors.groupedBackground)
+        .listStyle(.insetGrouped)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -183,7 +144,7 @@ struct WorkoutDetailView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
-                        .font(Design.Typography.title3())
+                        .imageScale(.large)
                         .symbolRenderingMode(.hierarchical)
                 }
             }
@@ -192,6 +153,7 @@ struct WorkoutDetailView: View {
             NavigationStack {
                 AddExerciseView(workout: workout)
             }
+            .presentationDragIndicator(.visible)
         }
         .alert("Delete Workout", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) {}

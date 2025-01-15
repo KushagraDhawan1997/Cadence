@@ -22,7 +22,8 @@ struct WorkoutHistoryView: View {
                 } label: {
                     WorkoutRow(workout: workout)
                 }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button(role: .destructive) {
                         deleteWorkout(workout)
                     } label: {
@@ -32,6 +33,7 @@ struct WorkoutHistoryView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.visible)
     }
     
     private var createButton: some View {
@@ -39,9 +41,8 @@ struct WorkoutHistoryView: View {
             Design.Haptics.light()
             showingCreateSheet = true
         } label: {
-            Image(systemName: "plus.circle.fill")
-                .font(Design.Typography.title3())
-                .symbolRenderingMode(.hierarchical)
+            Label("Create Workout", systemImage: "plus")
+                .font(.body.weight(.medium))
         }
     }
     
@@ -58,7 +59,7 @@ struct WorkoutHistoryView: View {
             }
             .navigationTitle("Workouts")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     createButton
                 }
             }
@@ -66,6 +67,7 @@ struct WorkoutHistoryView: View {
                 NavigationStack {
                     CreateWorkoutView(modelContext: modelContext)
                 }
+                .presentationDragIndicator(.visible)
             }
         }
     }

@@ -7,50 +7,56 @@ struct WorkoutRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Design.Spacing.md) {
             // Header
-            HStack(spacing: Design.Spacing.md) {
+            HStack(alignment: .center, spacing: Design.Spacing.md) {
                 Image(systemName: workout.type.iconName)
-                    .font(Design.Typography.title2())
+                    .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Design.Colors.primary)
                     .frame(width: 40, height: 40)
                     .background(Design.Colors.primary.opacity(0.1))
                     .clipShape(Circle())
                 
-                VStack(alignment: .leading, spacing: Design.Spacing.xxs) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(workout.type.displayName)
-                        .font(Design.Typography.headline())
+                        .font(.system(.body, design: .default))
+                        .fontWeight(.medium)
                     
                     Text(workout.timestamp.formatted(date: .abbreviated, time: .shortened))
-                        .font(Design.Typography.subheadline())
-                        .foregroundStyle(Design.Colors.secondary)
+                        .font(.system(.footnote))
+                        .foregroundStyle(.secondary)
                 }
             }
             
             // Metrics
-            HStack(spacing: Design.Spacing.sm) {
-                // Exercise Count
-                Label("\(workout.exercises.count) exercises", systemImage: "dumbbell.fill")
-                    .labelStyle(.titleAndIcon)
-                
-                if !workout.exercises.isEmpty {
-                    Text("•")
-                    
-                    // Total Sets
-                    Label("\(workout.exercises.reduce(0) { $0 + $1.sets.count }) sets", systemImage: "number")
-                        .labelStyle(.titleAndIcon)
+            HStack(spacing: Design.Spacing.lg) {
+                Label {
+                    Text("\(workout.exercises.count)")
+                        .fontWeight(.medium)
+                        .monospacedDigit() +
+                    Text(" exercises")
+                } icon: {
+                    Image(systemName: "dumbbell.fill")
+                        .frame(width: 20)
                 }
                 
                 if let duration = workout.duration {
-                    Text("•")
-                    
-                    // Duration
-                    Label("\(duration)m", systemImage: "clock.fill")
-                        .labelStyle(.titleAndIcon)
+                    Label {
+                        Text("\(duration)")
+                            .fontWeight(.medium)
+                            .monospacedDigit() +
+                        Text("m")
+                    } icon: {
+                        Image(systemName: "clock.fill")
+                            .frame(width: 20)
+                    }
                 }
             }
-            .font(Design.Typography.subheadline())
-            .foregroundStyle(Design.Colors.secondary)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
             .symbolRenderingMode(.hierarchical)
+            .padding(.leading, 52)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 }
 
@@ -76,10 +82,12 @@ struct WorkoutRowPreview: View {
     }
     
     var body: some View {
-        WorkoutRow(workout: workout)
-            .padding()
-            .background(Design.Colors.groupedBackground)
-            .modelContainer(container)
+        List {
+            WorkoutRow(workout: workout)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        }
+        .listStyle(.insetGrouped)
+        .modelContainer(container)
     }
 }
 

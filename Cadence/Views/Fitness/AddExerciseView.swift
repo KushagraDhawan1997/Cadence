@@ -19,7 +19,13 @@ struct AddExerciseView: View {
     }
     
     private func save() {
-        let exercise = Exercise(name: name, equipmentType: equipmentType, workout: workout)
+        // Validate exercise against library
+        guard let libraryExercise = ExerciseLibrary.findExercise(named: name) else {
+            // If not found, could show an alert here
+            return
+        }
+        
+        let exercise = Exercise(name: libraryExercise.primaryName, equipmentType: equipmentType, workout: workout)
         modelContext.insert(exercise)
         
         for setInput in sets {
@@ -37,8 +43,7 @@ struct AddExerciseView: View {
         workout.exercises.append(exercise)
         try? modelContext.save()
         
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
+        Design.Haptics.medium()
         dismiss()
     }
     
