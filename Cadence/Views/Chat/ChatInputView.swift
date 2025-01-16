@@ -39,4 +39,25 @@ struct ChatInputView: View {
             isInputFocused = true
         }
     }
+}
+
+#Preview {
+    let container = PreviewContainer.container
+    let viewModel = AssistantViewModel(
+        service: PreviewContainer.service,
+        errorHandler: PreviewContainer.errorHandler,
+        networkMonitor: PreviewContainer.networkMonitor,
+        modelContext: container.mainContext
+    )
+    
+    @State var messageText = ""
+    @State var showError = false
+    
+    return ChatInputView(
+        messageText: $messageText,
+        viewModel: viewModel,
+        showError: $showError,
+        onSend: {}
+    )
+    .modelContainer(container)
 } 

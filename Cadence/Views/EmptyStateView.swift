@@ -1,37 +1,21 @@
 import SwiftUI
 
-struct EmptyStateView: View {
-    @ObservedObject var viewModel: AssistantViewModel
-    @State private var showError = false
+struct ThreadEmptyStateView: View {
+    let title: String
+    let message: String
+    let buttonTitle: String
+    let action: () -> Void
     
     var body: some View {
         ContentUnavailableView {
-            Label("No Workouts", systemImage: "dumbbell.fill")
+            Label(title, systemImage: "bubble.left.and.bubble.right.fill")
         } description: {
-            Text("Create a new workout to start training")
+            Text(message)
         } actions: {
-            Button(action: createThread) {
-                Label("New Workout", systemImage: "plus")
+            Button(action: action) {
+                Label(buttonTitle, systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(viewModel.isLoading)
-        }
-        .alert("Error", isPresented: $showError) {
-            Button("OK") { }
-        } message: {
-            if let error = viewModel.error {
-                Text(error.localizedDescription)
-            }
-        }
-    }
-    
-    private func createThread() {
-        Task {
-            do {
-                try await viewModel.createThread()
-            } catch {
-                showError = true
-            }
         }
     }
 } 

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // MARK: - Thread Management
 extension AssistantViewModel {
@@ -15,6 +16,11 @@ extension AssistantViewModel {
                 threads.append(newThread)
                 currentThread = newThread
                 messages = [] // Clear messages for new thread
+                
+                // Save to persistence
+                let stored = StoredThread(from: newThread)
+                modelContext.insert(stored)
+                try modelContext.save()
                 
                 print("Thread created: \(newThread.id)")
             }
@@ -62,6 +68,16 @@ extension AssistantViewModel {
             threads.remove(at: index)
         }
         
+        // Delete from persistence
+        let threadId = thread.id // Capture the ID to use in predicate
+        let descriptor = FetchDescriptor<StoredThread>(predicate: #Predicate<StoredThread> { storedThread in
+            storedThread.id == threadId
+        })
+        if let storedThread = try? modelContext.fetch(descriptor).first {
+            modelContext.delete(storedThread)
+            try? modelContext.save()
+        }
+        
         // TODO: Add API call for thread deletion when available
         // try await service.deleteThread(thread.id)
     }
@@ -88,10 +104,8 @@ extension AssistantViewModel {
             }
         }
         
-        return ThreadGroup.allCases.compactMap { group in
-            let threadsInGroup = grouped[group, default: []]
-            if threadsInGroup.isEmpty { return nil }
-            return GroupedThreads(id: group, threads: threadsInGroup)
+        return ThreadGroup.allCases.map { group in
+            GroupedThreads(id: group, threads: grouped[group, default: []])
         }
     }
 } 

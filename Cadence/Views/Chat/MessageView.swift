@@ -49,4 +49,37 @@ struct MessageView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(message.role == "assistant" ? "Assistant message" : "Your message")
     }
+}
+
+#Preview {
+    let userMessage = MessageResponse(
+        id: "msg_1",
+        object: "thread.message",
+        createdAt: Int(Date().timeIntervalSince1970),
+        threadId: "thread_1",
+        role: "user",
+        content: [MessageContent(
+            type: "text",
+            text: TextContent(value: "Hello, how are you?", annotations: nil)
+        )]
+    )
+    
+    let assistantMessage = MessageResponse(
+        id: "msg_2",
+        object: "thread.message",
+        createdAt: Int(Date().timeIntervalSince1970),
+        threadId: "thread_1",
+        role: "assistant",
+        content: [MessageContent(
+            type: "text",
+            text: TextContent(value: "I'm doing well, thank you! How can I help you today?", annotations: nil)
+        )]
+    )
+    
+    return VStack {
+        MessageView(message: userMessage)
+        MessageView(message: assistantMessage)
+    }
+    .padding()
+    .modelContainer(PreviewContainer.container)
 } 

@@ -139,8 +139,7 @@ struct ExerciseFormView: View {
                                 }
                                 let impact = UIImpactFeedbackGenerator(style: .rigid)
                                 impact.impactOccurred()
-                            },
-                            isDeleteEnabled: sets.count > 1
+                            }
                         )
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                         .listRowBackground(Color(.systemBackground))
@@ -184,4 +183,20 @@ struct ExerciseFormView: View {
             }
         }
     }
+}
+
+#Preview {
+    @State var name = ""
+    @State var equipmentType = EquipmentType.barbell
+    @State var sets: [AddExerciseView.SetInput] = [AddExerciseView.SetInput()]
+    
+    return ExerciseFormView(
+        name: $name,
+        equipmentType: $equipmentType,
+        sets: $sets,
+        saveTitle: "Add",
+        onSave: {},
+        onCancel: {}
+    )
+    .modelContainer(PreviewContainer.container)
 } 

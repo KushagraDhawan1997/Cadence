@@ -259,6 +259,39 @@ struct SubmitToolOutputsRequest: APIRequest {
     }
 }
 
+struct ListThreadsRequest: APIRequest {
+    let limit: Int
+    let order: String
+    
+    init(limit: Int = 100, order: String = "desc") {
+        self.limit = limit
+        self.order = order
+    }
+    
+    var path: String { "/threads" }
+    var method: String { "GET" }
+    var headers: [String : String] { [:] }
+    var queryItems: [String : String]? {
+        ["limit": "\(limit)", "order": order]
+    }
+    var body: [String : Any]? { nil }
+}
+
+struct ListThreadsResponse: Codable {
+    let object: String
+    let data: [ThreadModel]
+    let firstId: String?
+    let lastId: String?
+    let hasMore: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case object, data
+        case firstId = "first_id"
+        case lastId = "last_id"
+        case hasMore = "has_more"
+    }
+}
+
 // MARK: - Response Models
 struct MessageResponse: Codable, Equatable, Identifiable {
     let id: String

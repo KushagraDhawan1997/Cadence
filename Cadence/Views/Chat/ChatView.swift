@@ -1,6 +1,8 @@
 import SwiftUI
+import SwiftData
 
 struct ChatView: View {
+    let thread: ThreadModel
     @ObservedObject var viewModel: AssistantViewModel
     @State private var messageText = ""
     @State private var showError = false
@@ -10,7 +12,7 @@ struct ChatView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            MessageListView(viewModel: viewModel)
+            MessageListView(messages: viewModel.messages, viewModel: viewModel)
             
             Divider()
             
@@ -21,7 +23,7 @@ struct ChatView: View {
                 onSend: sendMessage
             )
         }
-        .navigationTitle("Thread \(viewModel.currentThread?.id.suffix(4) ?? "")")
+        .navigationTitle("Thread \(thread.id.suffix(4))")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: $showError) {
             Button("OK") { }
@@ -38,7 +40,17 @@ struct ChatView: View {
             Text("Please check your internet connection and try again.")
         }
         .onAppear {
+            viewModel.currentThread = thread
             isInputFocused = true
+            
+            // Load messages
+            Task {
+                do {
+                    try await viewModel.updateMessages(threadId: thread.id, force: true)
+                } catch {
+                    showError = true
+                }
+            }
             
             // Check connection on appear
             if !viewModel.networkMonitor.isConnected {
@@ -47,6 +59,7 @@ struct ChatView: View {
         }
         .onDisappear {
             viewModel.cleanupCurrentTask()
+            viewModel.currentThread = nil
         }
         .onChange(of: viewModel.networkMonitor.isConnected) { oldValue, newValue in
             if !newValue {
@@ -76,5 +89,21 @@ struct ChatView: View {
                 isInputFocused = true
             }
         }
+    }
+}
+
+#Preview {
+    let container = PreviewContainer.container
+    let thread = ThreadModel(id: "thread_123", object: "thread", createdAt: Int(Date().timeIntervalSince1970))
+    let viewModel = AssistantViewModel(
+        service: PreviewContainer.service,
+        errorHandler: PreviewContainer.errorHandler,
+        networkMonitor: PreviewContainer.networkMonitor,
+        modelContext: container.mainContext
+    )
+    
+    return NavigationStack {
+        ChatView(thread: thread, viewModel: viewModel)
+            .modelContainer(container)
     }
 } 

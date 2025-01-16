@@ -3,10 +3,18 @@ import SwiftData
 
 @MainActor
 struct PreviewContainer {
+    static let schema = Schema([
+        Workout.self,
+        Exercise.self,
+        ExerciseSet.self,
+        StoredThread.self,
+        StoredMessage.self
+    ])
+    
     static var container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
-            for: Workout.self, Exercise.self, ExerciseSet.self,
+            for: schema,
             configurations: config
         )
         

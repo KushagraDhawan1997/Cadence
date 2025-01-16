@@ -28,7 +28,7 @@ struct ThreadRowView: View {
     
     var body: some View {
         NavigationLink {
-            ChatView(viewModel: viewModel)
+            ChatView(thread: thread, viewModel: viewModel)
                 .task {
                     do {
                         try await viewModel.selectThread(thread)

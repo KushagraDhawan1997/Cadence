@@ -18,17 +18,22 @@ struct ThreadListView: View {
                 )
             }
         }
-        .navigationTitle("Workouts")
+        .navigationTitle("Chats")
         .toolbar {
             Button(action: createThread) {
-                Label("New Workout", systemImage: "plus")
+                Label("New Chat", systemImage: "plus")
                     .font(.headline)
             }
             .disabled(viewModel.isLoading)
         }
         .overlay {
             if viewModel.groupedThreads.isEmpty && !viewModel.isLoading {
-                EmptyStateView(viewModel: viewModel)
+                ThreadEmptyStateView(
+                    title: "No Chats Yet",
+                    message: "Start a new conversation with your AI assistant",
+                    buttonTitle: "New Chat",
+                    action: createThread
+                )
             }
         }
     }

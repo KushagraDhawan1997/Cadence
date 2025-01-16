@@ -1,8 +1,10 @@
 import SwiftUI
+import SwiftData
 
 struct ExerciseCard: View {
     let exercise: Exercise
     let onTap: () -> Void
+    let onDelete: () -> Void
     @State private var showingEditSheet = false
     
     var body: some View {
@@ -10,26 +12,25 @@ struct ExerciseCard: View {
             onTap()
             showingEditSheet = true
         } label: {
-            VStack(alignment: .leading, spacing: Design.Spacing.md) {
+            VStack(alignment: .leading, spacing: 16) {
                 // Exercise Header
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(exercise.name)
-                        .font(.headline)
+                        .font(.title3)
+                        .fontWeight(.semibold)
                     
                     Text(exercise.equipmentType.displayName)
-                        .font(.subheadline)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 
                 if !exercise.sets.isEmpty {
-                    Divider()
-                        .padding(.vertical, 2)
-                    
                     // Sets
                     VStack(spacing: 0) {
                         ForEach(Array(exercise.sets.enumerated()), id: \.element.id) { index, set in
                             if index > 0 {
                                 Divider()
+                                    .padding(.vertical, 8)
                             }
                             
                             HStack {
@@ -41,6 +42,7 @@ struct ExerciseCard: View {
                                 
                                 Text("\(set.reps) reps")
                                     .font(.subheadline)
+                                    .fontWeight(.medium)
                                     .monospacedDigit()
                                 
                                 if let weightStr = formatWeight(for: set) {
@@ -50,20 +52,26 @@ struct ExerciseCard: View {
                                     
                                     Text(weightStr)
                                         .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(Design.Colors.primary)
                                         .monospacedDigit()
                                 }
                             }
-                            .padding(.vertical, 6)
                         }
                     }
                 }
             }
-            .padding(Design.Spacing.lg)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        .background(.background)
+        .background(Color(.tertiarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
         .sheet(isPresented: $showingEditSheet) {
             NavigationStack {
                 EditExerciseView(exercise: exercise)
@@ -93,6 +101,9 @@ struct ExerciseCard: View {
 }
 
 #Preview {
+    let container = PreviewContainer.container
+    let context = container.mainContext
+    
     let exercise = Exercise(name: "Bench Press", equipmentType: .barbell)
     exercise.sets = [
         ExerciseSet(reps: 10, weightType: .perSide, weightValue: 20, barWeight: 20, exercise: exercise),
@@ -100,8 +111,11 @@ struct ExerciseCard: View {
         ExerciseSet(reps: 6, weightType: .perSide, weightValue: 30, barWeight: 20, exercise: exercise)
     ]
     
-    return ExerciseCard(exercise: exercise) {}
+    context.insert(exercise)
+    
+    return ExerciseCard(exercise: exercise, onTap: {}, onDelete: {})
         .padding()
         .background(Color(.systemGroupedBackground))
+        .modelContainer(container)
 } 
 

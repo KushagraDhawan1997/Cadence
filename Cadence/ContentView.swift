@@ -7,8 +7,13 @@ struct ContentView: View {
     @StateObject private var viewModel: AssistantViewModel
     @ObservedObject private var networkMonitor: NetworkMonitor
     
-    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
-        _viewModel = StateObject(wrappedValue: AssistantViewModel(service: service, errorHandler: errorHandler, networkMonitor: networkMonitor))
+    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor, modelContext: ModelContext) {
+        _viewModel = StateObject(wrappedValue: AssistantViewModel(
+            service: service,
+            errorHandler: errorHandler,
+            networkMonitor: networkMonitor,
+            modelContext: modelContext
+        ))
         self.networkMonitor = networkMonitor
     }
     
@@ -39,10 +44,13 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(
+    let container = try! ModelContainer(for: PreviewContainer.schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    
+    return ContentView(
         service: PreviewContainer.service,
         errorHandler: PreviewContainer.errorHandler,
-        networkMonitor: PreviewContainer.networkMonitor
+        networkMonitor: PreviewContainer.networkMonitor,
+        modelContext: container.mainContext
     )
-    .modelContainer(PreviewContainer.container)
+    .modelContainer(container)
 }

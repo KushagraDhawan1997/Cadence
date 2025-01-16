@@ -23,4 +23,5 @@ struct EmptyWorkoutList: View {
 #Preview {
     EmptyWorkoutList {}
         .background(Design.Colors.groupedBackground)
+        .modelContainer(PreviewContainer.container)
 } 

@@ -5,7 +5,6 @@ struct SetInputView: View {
     let setNumber: Int
     let equipmentType: EquipmentType
     let onDelete: () -> Void
-    let isDeleteEnabled: Bool
     
     @State private var showingRepsPicker = false
     @State private var showingWeightPicker = false
@@ -14,13 +13,11 @@ struct SetInputView: View {
     init(set: Binding<AddExerciseView.SetInput>, 
          setNumber: Int,
          equipmentType: EquipmentType,
-         onDelete: @escaping () -> Void,
-         isDeleteEnabled: Bool) {
+         onDelete: @escaping () -> Void) {
         self._set = set
         self.setNumber = setNumber
         self.equipmentType = equipmentType
         self.onDelete = onDelete
-        self.isDeleteEnabled = isDeleteEnabled
         
         // Update weight type based on equipment
         if set.wrappedValue.weightType == .perSide && equipmentType != .barbell {
@@ -34,133 +31,83 @@ struct SetInputView: View {
             return .perSide
         case .dumbbell:
             return .perDumbbell
+        case .cable, .machine:
+            return .total
         case .bodyweight:
             return .bodyweight
-        case .machine, .cable:
-            return .total
-        }
-    }
-    
-    private var weightLabel: String {
-        switch equipmentType {
-        case .barbell:
-            return "PER SIDE"
-        case .dumbbell:
-            return "PER DUMBBELL"
-        case .bodyweight:
-            return "ADDED WEIGHT"
-        case .machine, .cable:
-            return "WEIGHT"
         }
     }
     
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(spacing: 16) {
             // Set Number
-            Text("\(setNumber)")
-                .font(.title3.weight(.medium))
+            Text("Set \(setNumber)")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .frame(width: 32)
+                .frame(width: 50, alignment: .leading)
             
-            // Reps Section
-            VStack(alignment: .leading, spacing: 4) {
-                Text("REPS")
-                    .font(.caption)
+            // Reps
+            Button {
+                showingRepsPicker = true
+            } label: {
+                Text("\(set.reps)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .monospacedDigit()
+                    .foregroundStyle(Design.Colors.primary)
+                + Text(" reps")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                
-                Button {
-                    showingRepsPicker = true
-                } label: {
-                    Text("\(set.reps)")
-                        .font(.title3.monospacedDigit())
-                        .foregroundStyle(.primary)
-                        .frame(minWidth: 32, alignment: .leading)
-                        .contentTransition(.numericText())
-                }
-                .buttonStyle(.plain)
             }
+            .buttonStyle(.plain)
+            
+            // Weight
+            Button {
+                showingWeightPicker = true
+            } label: {
+                Group {
+                    if set.weightType == .perSide {
+                        Text("\(Int(set.weightValue))")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .monospacedDigit()
+                            .foregroundStyle(Design.Colors.primary)
+                        + Text("/side")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(Int(set.weightValue))")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .monospacedDigit()
+                            .foregroundStyle(Design.Colors.primary)
+                        + Text("kg")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
             
             Spacer()
             
-            // Weight Section
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(weightLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Button {
-                    showingWeightPicker = true
-                } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(Int(set.weightValue))")
-                            .font(.title3.monospacedDigit().weight(.medium))
-                            .contentTransition(.numericText())
-                        
-                        Text("kg")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                
-                if equipmentType == .barbell {
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("Bar:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        
-                        Button {
-                            showingBarWeightPicker = true
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                Text("\(Int(set.barWeight))")
-                                    .font(.subheadline.monospacedDigit())
-                                    .contentTransition(.numericText())
-                                
-                                Text("kg")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("Total:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        
-                        Text("\(Int(set.weightValue * 2 + set.barWeight))")
-                            .font(.subheadline.monospacedDigit())
-                            .contentTransition(.numericText())
-                        
-                        Text("kg")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            
             // Delete Button
-            if isDeleteEnabled {
-                Button(action: {
-                    let impact = UIImpactFeedbackGenerator(style: .rigid)
-                    impact.impactOccurred()
-                    onDelete()
-                }) {
-                    Image(systemName: "minus.circle.fill")
-                        .foregroundStyle(.red)
-                        .imageScale(.large)
-                }
+            Button(action: onDelete) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+                    .imageScale(.medium)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 12)
+        .background(Color(.systemBackground))
+        .contentShape(Rectangle()) // This ensures taps only work on visible elements
         .sheet(isPresented: $showingRepsPicker) {
             NavigationStack {
                 Picker("Reps", selection: $set.reps) {
-                    ForEach(1...100, id: \.self) { value in
-                        Text("\(value)")
-                            .tag(value)
+                    ForEach(1...50, id: \.self) { reps in
+                        Text("\(reps)")
+                            .tag(reps)
                     }
                 }
                 .pickerStyle(.wheel)
@@ -174,98 +121,74 @@ struct SetInputView: View {
                     }
                 }
             }
-            .presentationDetents([.height(260)])
+            .presentationDetents([.height(240)])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingWeightPicker) {
             NavigationStack {
-                WeightPicker(weight: $set.weightValue)
-                    .navigationTitle(weightLabel)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                showingWeightPicker = false
-                            }
+                VStack {
+                    Picker("Weight", selection: $set.weightValue) {
+                        ForEach(0...200, id: \.self) { weight in
+                            Text("\(weight)")
+                                .tag(Double(weight))
                         }
                     }
+                    .pickerStyle(.wheel)
+                    
+                    if set.weightType == .perSide {
+                        Button("Set Bar Weight (\(Int(set.barWeight))kg)") {
+                            showingBarWeightPicker = true
+                        }
+                        .padding(.top)
+                    }
+                }
+                .navigationTitle("Weight")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            showingWeightPicker = false
+                        }
+                    }
+                }
             }
-            .presentationDetents([.height(260)])
+            .presentationDetents([.height(280)])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingBarWeightPicker) {
             NavigationStack {
-                WeightPicker(weight: $set.barWeight, range: 0...50, step: 2.5)
-                    .navigationTitle("Bar Weight")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                showingBarWeightPicker = false
-                            }
+                Picker("Bar Weight", selection: $set.barWeight) {
+                    ForEach([10, 15, 20, 25], id: \.self) { weight in
+                        Text("\(weight)kg")
+                            .tag(Double(weight))
+                    }
+                }
+                .pickerStyle(.wheel)
+                .navigationTitle("Bar Weight")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            showingBarWeightPicker = false
                         }
                     }
+                }
             }
-            .presentationDetents([.height(260)])
+            .presentationDetents([.height(240)])
+            .presentationDragIndicator(.visible)
         }
     }
 }
 
-struct WeightPicker: View {
-    @Binding var weight: Double
-    var range: ClosedRange<Double> = 0...1000
-    var step: Double = 2.5
+#Preview {
+    @State var set = AddExerciseView.SetInput()
     
-    private var wholeNumbers: [Int] {
-        Array(stride(from: Int(range.lowerBound), through: Int(range.upperBound), by: 1))
-    }
-    
-    private var decimalPart: Double {
-        weight.truncatingRemainder(dividingBy: 1)
-    }
-    
-    @State private var wholeNumber: Int = 0
-    @State private var decimal: Double = 0
-    
-    init(weight: Binding<Double>, range: ClosedRange<Double> = 0...1000, step: Double = 2.5) {
-        self._weight = weight
-        self.range = range
-        self.step = step
-        
-        // Initialize state
-        let initialWeight = weight.wrappedValue
-        _wholeNumber = State(initialValue: Int(initialWeight))
-        _decimal = State(initialValue: initialWeight.truncatingRemainder(dividingBy: 1))
-    }
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            Picker("Whole", selection: $wholeNumber) {
-                ForEach(wholeNumbers, id: \.self) { number in
-                    Text("\(number)")
-                        .tag(number)
-                }
-            }
-            .pickerStyle(.wheel)
-            .onChange(of: wholeNumber) { _ in
-                weight = Double(wholeNumber) + decimal
-            }
-            
-            if step < 1 {
-                Picker("Decimal", selection: $decimal) {
-                    ForEach([0.0, 0.5], id: \.self) { decimal in
-                        Text(String(format: "%.1f", decimal))
-                            .tag(decimal)
-                    }
-                }
-                .pickerStyle(.wheel)
-                .frame(width: 80)
-                .onChange(of: decimal) { _ in
-                    weight = Double(wholeNumber) + decimal
-                }
-            }
-        }
-        .onAppear {
-            wholeNumber = Int(weight)
-            decimal = weight.truncatingRemainder(dividingBy: 1)
-        }
-    }
+    return SetInputView(
+        set: $set,
+        setNumber: 1,
+        equipmentType: .barbell,
+        onDelete: {}
+    )
+    .padding()
+    .modelContainer(PreviewContainer.container)
 } 

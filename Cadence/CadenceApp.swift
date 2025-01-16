@@ -20,7 +20,9 @@ struct CadenceApp: App {
         let schema = Schema([
             Workout.self,
             Exercise.self,
-            ExerciseSet.self
+            ExerciseSet.self,
+            StoredThread.self,
+            StoredMessage.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema)
         do {
@@ -53,7 +55,8 @@ struct CadenceApp: App {
             ContentView(
                 service: container.resolve(OpenAIService.self)!,
                 errorHandler: container.resolve(ErrorHandler.self)!,
-                networkMonitor: container.resolve(NetworkMonitor.self)!
+                networkMonitor: container.resolve(NetworkMonitor.self)!,
+                modelContext: modelContainer.mainContext
             )
         }
         .modelContainer(modelContainer)

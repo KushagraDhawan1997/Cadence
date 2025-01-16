@@ -1,6 +1,5 @@
 import Foundation
-
-// MARK: - Custom Errors removed since we're using AppError
+import SwiftData
 
 @MainActor
 class AssistantViewModel: ObservableObject {
@@ -8,6 +7,7 @@ class AssistantViewModel: ObservableObject {
     internal let service: APIClient
     internal let errorHandler: ErrorHandling
     internal let networkMonitor: NetworkMonitor
+    internal let modelContext: ModelContext
     
     // MARK: - Published Properties
     @Published var threads: [ThreadModel] = [] {
@@ -28,9 +28,15 @@ class AssistantViewModel: ObservableObject {
     internal var currentTask: Task<Void, Error>?
     
     // MARK: - Initialization
-    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor) {
+    init(service: APIClient, errorHandler: ErrorHandling, networkMonitor: NetworkMonitor, modelContext: ModelContext) {
         self.service = service
         self.errorHandler = errorHandler
         self.networkMonitor = networkMonitor
+        self.modelContext = modelContext
+        
+        // Load threads on init
+        Task {
+            await loadThreads()
+        }
     }
 }

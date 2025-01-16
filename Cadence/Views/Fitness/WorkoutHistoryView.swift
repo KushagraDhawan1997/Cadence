@@ -74,6 +74,8 @@ struct WorkoutHistoryView: View {
 }
 
 #Preview {
-    WorkoutHistoryView()
-        .modelContainer(PreviewContainer.container)
+    NavigationStack {
+        WorkoutHistoryView()
+            .modelContainer(PreviewContainer.container)
+    }
 } 

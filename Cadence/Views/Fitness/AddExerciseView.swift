@@ -60,9 +60,11 @@ struct AddExerciseView: View {
 }
 
 #Preview {
-    let preview = PreviewContainer.container
-    let workout = try! preview.mainContext.fetch(FetchDescriptor<Workout>()).first!
+    let container = PreviewContainer.container
+    let workout = try! container.mainContext.fetch(FetchDescriptor<Workout>()).first!
     
-    return AddExerciseView(workout: workout)
-        .modelContainer(preview)
+    return NavigationStack {
+        AddExerciseView(workout: workout)
+            .modelContainer(container)
+    }
 }

@@ -58,12 +58,16 @@ extension AssistantViewModel {
                 try await updateMessages(threadId: threadId, force: true)
                 isStreaming = false
                 
+                // Sync messages to persistence
+                await syncStoredMessages(threadId: threadId, with: messages)
+                
             } catch is CancellationError {
                 print("Task was cancelled")
                 cleanupState()
                 if messageAddedToServer {
                     Task {
                         try? await updateMessages(threadId: threadId, force: true)
+                        await syncStoredMessages(threadId: threadId, with: messages)
                     }
                 }
             } catch {
@@ -73,6 +77,7 @@ extension AssistantViewModel {
                 if messageAddedToServer {
                     Task {
                         try? await updateMessages(threadId: threadId, force: true)
+                        await syncStoredMessages(threadId: threadId, with: messages)
                     }
                 }
                 throw appError
@@ -87,6 +92,7 @@ extension AssistantViewModel {
             if networkMonitor.isConnected && messageAddedToServer {
                 Task {
                     try? await updateMessages(threadId: threadId, force: true)
+                    await syncStoredMessages(threadId: threadId, with: messages)
                 }
             }
             throw error
